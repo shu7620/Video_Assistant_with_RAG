@@ -2,7 +2,8 @@ import os
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from langchain_community.embeddings import HuggingFaceEmbeddings
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -10,14 +11,17 @@ CHROMA_DIR="vector_db"
 COLLECTION_NAME="video_transcripts"
 EMBEDDING_MODEL="all-MiniLM-L6-v2"
 
-
-embeddings=HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+def load_embedding():
+    embeddings=HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    return embeddings
+    
 splitter=RecursiveCharacterTextSplitter(chunk_size=500,chunk_overlap=50)
 
 def build_vector_store(transcript:str)->Chroma:
     print("Building Vector store...")
     
     chunks=splitter.split_text(transcript)
+    embeddings=load_embedding()
     
     docs=[
         Document(page_content=chunk,metadata={'chunk_index':i})
@@ -40,6 +44,7 @@ def load_vector_store()->Chroma:
             f"The vector database directory '{CHROMA_DIR}' does not exist. "
             "Please call build_vector_store() first."
         )
+    embeddings=load_embedding()
         
     vector_store=Chroma(
         embedding=embeddings,
@@ -48,8 +53,8 @@ def load_vector_store()->Chroma:
     )
     return vector_store
     
-def get_retriever(vector_store:Chroma,top_k:int=4):
+def get_retriever(vector_store:Chroma,k:int=4):
     return vector_store.as_retriever(
         search_type='similarity',
-        search_kwargs={"k":top_k} 
+        search_kwargs={"k":k} 
     )
