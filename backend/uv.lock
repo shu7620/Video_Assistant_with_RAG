@@ -815,6 +815,22 @@ wheels = [
 ]
 
 [[package]]
+name = "flashrank"
+version = "0.2.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "onnxruntime" },
+    { name = "requests" },
+    { name = "tokenizers" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/55/1f/176cb4a857a70c3538f637e19389ab6aed21548a1ba1d1424fccc8bba108/FlashRank-0.2.10.tar.gz", hash = "sha256:f8f82a25c32fdfc668a09dc4089421d6aab8e7f71308424b541f40bb3f01d9db", size = 18905, upload-time = "2025-01-06T13:33:01.657Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/99/72639cc1c9221c5bc77a2df1c2d352fe11965553bdf7d3e0856e7fcc8fd6/FlashRank-0.2.10-py3-none-any.whl", hash = "sha256:5d3272ae657d793c132d1e7917ed9e2adf49e0e1c60735583a67b051c6f0434a", size = 14511, upload-time = "2025-01-06T13:32:59.42Z" },
+]
+
+[[package]]
 name = "flatbuffers"
 version = "25.12.19"
 source = { registry = "https://pypi.org/simple" }
@@ -4479,6 +4495,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "ffmpeg" },
     { name = "ffmpeg-python" },
+    { name = "flashrank" },
     { name = "fpdf2" },
     { name = "huggingface-hub" },
     { name = "langchain" },
@@ -4517,6 +4534,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.136.3" },
     { name = "ffmpeg", specifier = ">=1.4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
+    { name = "flashrank", specifier = ">=0.2.10" },
     { name = "fpdf2", specifier = ">=2.7.9" },
     { name = "huggingface-hub", specifier = ">=0.23.0" },
     { name = "langchain", specifier = ">=0.2.0" },

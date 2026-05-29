@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.136.3",
     "ffmpeg>=1.4",
     "ffmpeg-python>=0.2.0",
+    "flashrank>=0.2.10",
     "fpdf2>=2.7.9",
     "huggingface-hub>=0.23.0",
     "langchain>=0.2.0",
