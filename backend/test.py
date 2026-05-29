@@ -1,7 +1,7 @@
-from utils.audio_processor import process_input
-from core.transcriber import transcribe_all
-from core.summarize import summarize_transcript, generate_title
-from core.extractor import extract_action_items,extract_key_decisions,extract_questions 
+from backend.app.utils.audio_processor import process_input
+from backend.app.core.transcriber import transcribe_all
+from backend.app.core.summarize import summarize_transcript, generate_title
+from backend.app.core.extractor import extract_action_items,extract_key_decisions,extract_questions 
 from dotenv import load_dotenv
 load_dotenv()
 

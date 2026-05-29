@@ -17,39 +17,31 @@ def load_embedding():
     
 splitter=RecursiveCharacterTextSplitter(chunk_size=500,chunk_overlap=50)
 
-def build_vector_store(transcript:str)->Chroma:
-    print("Building Vector store...")
+def build_vector_store(transcript: str, persist_dir: str = CHROMA_DIR) -> Chroma:
+    print(f"Building Vector store at {persist_dir}...")
+    chunks = splitter.split_text(transcript)
+    embeddings = load_embedding()
     
-    chunks=splitter.split_text(transcript)
-    embeddings=load_embedding()
-    
-    docs=[
-        Document(page_content=chunk,metadata={'chunk_index':i})
-        for i,chunk in enumerate(chunks)
+    docs = [
+        Document(page_content=chunk, metadata={'chunk_index': i})
+        for i, chunk in enumerate(chunks)
     ]
-    vector_store=Chroma.from_documents(
+    vector_store = Chroma.from_documents(
         documents=docs,
         embedding=embeddings,
         collection_name=COLLECTION_NAME,
-        persist_directory=CHROMA_DIR
+        persist_directory=persist_dir # <--- Use the dynamic path passed
     )
-    
     return vector_store
 
-def load_vector_store()->Chroma:
-    
-    # Handle edge case where you try to load a database that hasn't been built yet
-    if not os.path.exists(CHROMA_DIR):
-        raise FileNotFoundError(
-            f"The vector database directory '{CHROMA_DIR}' does not exist. "
-            "Please call build_vector_store() first."
-        )
-    embeddings=load_embedding()
-        
-    vector_store=Chroma(
-        embedding=embeddings,
+def load_vector_store(persist_dir: str = CHROMA_DIR) -> Chroma:
+    if not os.path.exists(persist_dir): # <--- Check dynamic path
+        raise FileNotFoundError(f"The vector database directory '{persist_dir}' does not exist.")
+    embeddings = load_embedding()
+    vector_store = Chroma(
         collection_name=COLLECTION_NAME,
-        persist_directory=CHROMA_DIR
+        embedding_function=embeddings,
+        persist_directory=persist_dir # <--- Load dynamic path
     )
     return vector_store
     

@@ -48,16 +48,16 @@ Context from meeting transcript:
 
 
 
-def build_rag_chain(transcript:str):
-    vector_store=build_vector_store(transcript)
+def build_rag_chain(transcript:str,persist_dir:str):
+    vector_store=build_vector_store(transcript,persist_dir=persist_dir)
     
     retriever=get_retriever(vector_store,k=4)
     return create_rag_chain_from_retriever(retriever)
 
 
 
-def load_rag_chain():
-    vector_store=load_vector_store()
+def load_rag_chain(persist_dir:str):
+    vector_store=load_vector_store(persist_dir=persist_dir)
     
     retriever=get_retriever(vector_store,k=4)
     return create_rag_chain_from_retriever(retriever)
