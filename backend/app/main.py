@@ -70,25 +70,82 @@ def login(payload: AuthRequest, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 # --- BACKGROUND WORKER ENGINE ---
+# def async_video_processing_worker(task_id: str, user_id: int, source_url: str, language: str):
+#     chunks_created = []
+#     try:
+#         chunks_created = process_input(source_url)
+#         master_transcript = transcribe_all(chunks_created, language=language)
+        
+#         if not master_transcript.strip():
+#             raise ValueError("Empty text transcript generated.")
+
+#         db_storage_path = f"vector_db_{task_id}"
+#         build_vector_store(master_transcript, persist_dir=db_storage_path)
+
+#         video_title = generate_title(master_transcript)
+#         video_summary = summarize_transcript(master_transcript)
+#         action_items_str = extract_action_items(master_transcript)
+#         key_decisions_str = extract_key_decisions(master_transcript)
+#         open_questions_str = extract_questions(master_transcript)
+
+#         # Write analysis to SQLite database persistently!
+#         db = next(get_db())
+#         db_analysis = AnalysisModel(
+#             id=task_id,
+#             user_id=user_id,
+#             video_url=source_url,
+#             title=video_title.strip(),
+#             summary=video_summary.strip(),
+#             action_items=action_items_str.strip(),
+#             key_decisions=key_decisions_str.strip(),
+#             open_questions=open_questions_str.strip(),
+#             vector_db_path=db_storage_path
+#         )
+#         db.add(db_analysis)
+#         db.commit()
+
+#         # Mark in memory tracker as completed
+#         tasks_db[task_id] = {"status": "completed"}
+
+#     except Exception as e:
+#         logger.error(f"Task failure -> {str(e)}")
+#         tasks_db[task_id] = {"status": "failed", "error": str(e)}
+#     finally:
+#         for chunk_file in chunks_created:
+#             if os.path.exists(chunk_file):
+#                 os.remove(chunk_file)
+
+#-----------------------------------------------------------------------------------------------------------------------------
+
+
 def async_video_processing_worker(task_id: str, user_id: int, source_url: str, language: str):
     chunks_created = []
     try:
+        # 1. Download & Slice Audio chunks (default is 10 min blocks)
         chunks_created = process_input(source_url)
-        master_transcript = transcribe_all(chunks_created, language=language)
         
-        if not master_transcript.strip():
-            raise ValueError("Empty text transcript generated.")
+        # 2. Get timestamped text segment dictionaries
+        # Returns: [{"start": 0.0, "end": 4.5, "text": "Hello..."}, ...]
+        timestamped_segments = transcribe_all(chunks_created, language=language, chunk_minutes=10)
+        
+        if not timestamped_segments:
+            raise ValueError("No transcript segments generated.")
 
+        # 3. Compile a plain text string for old legacy summary/extractor scripts
+        master_transcript_str = "\n".join([f"[{seg['start']}] {seg['text']}" for seg in timestamped_segments])
+
+        # 4. Build the modern vector store containing the timestamped metadata!
         db_storage_path = f"vector_db_{task_id}"
-        build_vector_store(master_transcript, persist_dir=db_storage_path)
+        build_vector_store(timestamped_segments, persist_dir=db_storage_path)
 
-        video_title = generate_title(master_transcript)
-        video_summary = summarize_transcript(master_transcript)
-        action_items_str = extract_action_items(master_transcript)
-        key_decisions_str = extract_key_decisions(master_transcript)
-        open_questions_str = extract_questions(master_transcript)
+        # 5. Extract summaries and elements as usual using the text string
+        video_title = generate_title(master_transcript_str)
+        video_summary = summarize_transcript(master_transcript_str)
+        action_items_str = extract_action_items(master_transcript_str)
+        key_decisions_str = extract_key_decisions(master_transcript_str)
+        open_questions_str = extract_questions(master_transcript_str)
 
-        # Write analysis to SQLite database persistently!
+        # 6. Save data to SQLite Database persistently
         db = next(get_db())
         db_analysis = AnalysisModel(
             id=task_id,
@@ -104,7 +161,6 @@ def async_video_processing_worker(task_id: str, user_id: int, source_url: str, l
         db.add(db_analysis)
         db.commit()
 
-        # Mark in memory tracker as completed
         tasks_db[task_id] = {"status": "completed"}
 
     except Exception as e:
@@ -114,6 +170,10 @@ def async_video_processing_worker(task_id: str, user_id: int, source_url: str, l
         for chunk_file in chunks_created:
             if os.path.exists(chunk_file):
                 os.remove(chunk_file)
+                
+                
+
+
 
 # --- PROTECTED PIPELINE ENDPOINTS ---
 @app.post("/api/process-video", status_code=status.HTTP_202_ACCEPTED)
