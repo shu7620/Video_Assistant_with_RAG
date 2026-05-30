@@ -40,6 +40,15 @@ class AnalysisModel(Base):
     key_decisions = Column(Text, nullable=False)
     open_questions = Column(Text, nullable=False)
     vector_db_path = Column(String, nullable=False)
+    
+class ChatMessageModel(Base):
+    __tablename__ = "chat_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    analysis_id = Column(String, ForeignKey("analyses.id"), nullable=False)
+    sender = Column(String, nullable=False)  # "user" or "ai"
+    text = Column(Text, nullable=False)
+    timestamp = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
 
 # Create tables if they don't exist
 Base.metadata.create_all(bind=engine)

@@ -123,3 +123,25 @@ def process_input(source: str) -> list:
 
     # Return the list of file paths to the generated audio chunks for downstream processing
     return chunks
+
+
+def process_local_input(local_file_path: str) -> list:
+    """
+    Dedicated processor for handling raw multi-format local video/audio uploads.
+    Extracts, standardizes, chunks the track, and runs automatic cleanups.
+    """
+    print(f"Processing local media upload file path: {local_file_path}")
+    
+    # 1. Convert any incoming container (.mp4, .mkv, .m4a) to structural 16kHz mono WAV
+    standardized_wav = convert_to_wav(local_file_path)
+    
+    try:
+        # 2. Slice the standardized master wav track into 10-minute structural segments
+        print("Chunking standardized local audio asset track...")
+        chunks = chunk_audio(standardized_wav, chunk_minutes=10)
+        print(f"Local audio processing complete — {len(chunks)} chunk(s) created.")
+        return chunks
+    finally:
+        # Clean up the intermediate standardized master wav file to save local storage space
+        if os.path.exists(standardized_wav):
+            os.remove(standardized_wav)
