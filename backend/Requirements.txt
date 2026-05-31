@@ -1,3 +1,6 @@
+# --- CRITICAL DEPLOYMENT FIX: Restore pkg_resources matching hooks ---
+setuptools<82.0.0
+
 # --- Core Web & Server Infrastructure ---
 fastapi==0.136.3
 uvicorn==0.48.0
