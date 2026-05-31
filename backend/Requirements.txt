@@ -1,7 +1,4 @@
-# --- CRITICAL DEPLOYMENT FIX: Restore pkg_resources matching hooks ---
-#setuptools<82.0.0
-
-# --- Core Web & Server Infrastructure ---
+# --- Core Web & Runtime Infrastructure ---
 fastapi==0.136.3
 uvicorn==0.48.0
 python-dotenv==1.0.0
@@ -9,45 +6,44 @@ requests==2.32.0
 tqdm==4.66.0
 watchdog==4.0.0
 
-# --- Database & Vector Search Ecosystem ---
-pymongo[srv]>=4.9,<5.0
-
-
-# --- LangChain & LLM Frameworks ---
+# --- The Strict LangChain 0.2 Ecosystem Grid ---
+# Extracted directly from your workspace lockfile to guarantee zero collisions
 langchain==0.2.17
 langchain-core==0.2.43
 langchain-community==0.2.19
 langchain-mistralai==0.1.12
-langchain-mongodb==0.2.0
-mistralai==0.4.0
-flashrank==0.2.10
-tiktoken==0.7.0
+langchain-mongodb==0.1.3
 
-# --- Machine Learning, Embeddings & Heavy Computations ---
-numpy==1.26.0
+# --- Database Drivers & Utilities ---
+# Lowering this ensures langchain-mongodb joins smoothly without a 1.x upgrade barrier
+pymongo[srv]==4.8.0
+
+# --- Heavy ML & Local Inference Engines ---
+# Keeps HuggingFaceEmbeddings working natively on startup without RAM drops
 torch==2.2.0
 torchaudio==2.2.0
 sentence-transformers==3.0.0
 langchain-huggingface==0.0.3
 huggingface-hub==0.23.0
+flashrank==0.2.10
+tiktoken==0.7.0
 
-# --- Media Processing & Audio Ingestion Pipeline ---
+# --- Audio Ingestion & File Processing ---
 yt-dlp==2024.4.9
 pydub==0.25.1
 ffmpeg-python==0.2.0
 openai-whisper==20231117
 
-# --- Authentication, Encryption & Security Validation ---
+# --- Pre-compiled Security Frameworks ---
+# Separated to bypass the old setuptools 'pkg_resources' build crashes entirely
 pyjwt[crypto]==2.13.0
-passlib>=1.7.4
-argon2-cffi>=23.1.0
+passlib==1.7.4
+argon2-cffi==25.1.0
 pydantic[email]==2.13.4
 
-# --- Document Compilation & Localization Helpers ---
+# --- Miscellaneous Helpers & Dashboard Frontends ---
 fpdf2==2.7.9
 reportlab==4.2.0
 deep-translator==1.11.4
-
-# --- Legacy Dashboard Frontends (If Applicable) ---
 streamlit==1.35.0
 streamlit-extras==0.4.0
