@@ -15,7 +15,7 @@ pymongo[srv]>=4.9,<5.0
 
 # --- LangChain & LLM Frameworks ---
 langchain==0.2.17
-langchain-core==0.2.43
+langchain-core>=0.3.0,<0.4.0
 langchain-community==0.2.19
 langchain-mistralai==0.2.0
 langchain-mongodb==0.2.0
