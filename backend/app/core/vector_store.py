@@ -3,7 +3,7 @@ from pymongo import MongoClient
 from langchain_mongodb import MongoDBAtlasVectorSearch
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
-from core.config import db, settings
+from app.core.config import db, settings
 from dotenv import load_dotenv
 load_dotenv()
 
