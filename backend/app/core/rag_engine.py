@@ -5,7 +5,8 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from app.core.vector_store import build_vector_store, load_vector_store,load_embedding
 from langchain_core.documents import Document
 from app.core.normalizer import llm_query_normalizer
-from langchain_classic.retrievers import ContextualCompressionRetriever
+# from langchain_classic.retrievers import ContextualCompressionRetriever
+from langchain.retrievers import ContextualCompressionRetriever
 from langchain_community.document_compressors import FlashrankRerank
 from app.core.config import Shared_llm
 import time
