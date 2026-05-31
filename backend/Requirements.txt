@@ -11,8 +11,7 @@ watchdog==4.0.0
 
 # --- Database & Vector Search Ecosystem ---
 pymongo[srv]>=4.9,<5.0
-chromadb==0.5.0
-langchain-chroma==1.1.0
+
 
 # --- LangChain & LLM Frameworks ---
 langchain>=0.2.0,<0.3.0
