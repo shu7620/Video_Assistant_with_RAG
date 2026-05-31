@@ -2,12 +2,12 @@ import os
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
-from core.vector_store import build_vector_store, load_vector_store,load_embedding
+from app.core.vector_store import build_vector_store, load_vector_store,load_embedding
 from langchain_core.documents import Document
-from core.normalizer import llm_query_normalizer
+from app.core.normalizer import llm_query_normalizer
 from langchain_classic.retrievers import ContextualCompressionRetriever
 from langchain_community.document_compressors import FlashrankRerank
-from core.config import Shared_llm
+from app.core.config import Shared_llm
 import time
 from dotenv import load_dotenv
 load_dotenv()
