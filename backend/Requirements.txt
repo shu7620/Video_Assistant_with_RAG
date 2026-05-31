@@ -1,44 +1,52 @@
-# ── AI Meeting Assistant ── requirements.txt ──────────────────────────────────
-# Python >= 3.10 recommended
+# --- Core Web & Server Infrastructure ---
+fastapi==0.136.3
+uvicorn==0.48.0
+python-dotenv==1.0.0
+requests==2.32.0
+tqdm==4.66.0
+watchdog==4.0.0
 
-# ── Audio / Video acquisition ─────────────────────────────────────────────────
-yt-dlp>=2024.4.9                  # Download audio from YouTube URLs
-pydub>=0.25.1                     # Audio file manipulation / format conversion
-ffmpeg-python>=0.2.0              # FFmpeg bindings (FFmpeg binary must be installed separately)
+# --- Database & Vector Search Ecosystem ---
+pymongo[srv]==4.10.2
+langchain-mongodb==0.11.0
+chromadb==0.5.0
+langchain-chroma==1.1.0
 
-# ── Speech-to-Text (local Whisper) ────────────────────────────────────────────
-openai-whisper>=20231117          # OpenAI Whisper (runs locally)
-torch>=2.2.0                      # PyTorch backend for Whisper
-torchaudio>=2.2.0                 # Audio utilities for PyTorch
+# --- LangChain & LLM Frameworks ---
+langchain==0.2.0
+langchain-core==0.2.0
+langchain-community==0.2.0
+langchain-mistralai==0.1.0
+mistralai==0.4.0
+flashrank==0.2.10
+tiktoken==0.7.0
 
-# ── Translation (Hindi → English) ─────────────────────────────────────────────
-deep-translator>=1.11.4           # Lightweight translation wrapper (Google backend)
+# --- Machine Learning, Embeddings & Heavy Computations ---
+numpy==1.26.0
+torch==2.2.0
+torchaudio==2.2.0
+sentence-transformers==3.0.0
+langchain-huggingface==0.0.3
+huggingface-hub==0.23.0
 
-# ── LLM Orchestration — LangChain LCEL + Mistral ──────────────────────────────
-langchain>=0.2.0
-langchain-core>=0.2.0
-langchain-community>=0.2.0
-langchain-mistralai>=0.1.0        # LangChain wrapper for Mistral API
-mistralai>=0.4.0                  # Official Mistral Python client
+# --- Media Processing & Audio Ingestion Pipeline ---
+yt-dlp==2024.4.9
+pydub==0.25.1
+ffmpeg-python==0.2.0
+ffmpeg==1.4
+openai-whisper==20231117
 
-# ── RAG Pipeline ──────────────────────────────────────────────────────────────
-chromadb>=0.5.0                   # Local vector store
-sentence-transformers>=3.0.0      # HuggingFace embedding models
-langchain-huggingface>=0.0.3      # LangChain ↔ HuggingFace embeddings bridge
-huggingface-hub>=0.23.0           # Model downloading from HuggingFace Hub
-tiktoken>=0.7.0                   # Token counting for text splitting
+# --- Authentication, Encryption & Security Validation ---
+pyjwt[crypto]==2.13.0
+passlib[argon2]==1.7.4
+pydantic[email]==2.13.4
 
-# ── Streamlit UI ──────────────────────────────────────────────────────────────
-streamlit>=1.35.0
-streamlit-extras>=0.4.0           # Additional Streamlit widgets / utilities
-watchdog>=4.0.0                   # File-change watcher (improves Streamlit hot-reload)
+# --- Document Compilation & Localization Helpers ---
+fpdf2==2.7.9
+reportlab==4.2.0
+deep-translator==1.11.4
+quickjs==1.19.4
 
-# ── PDF & TXT Export ──────────────────────────────────────────────────────────
-reportlab>=4.2.0                  # PDF generation
-fpdf2>=2.7.9                      # Lightweight alternative PDF library
-
-# ── Utilities ─────────────────────────────────────────────────────────────────
-python-dotenv>=1.0.0              # Load API keys from .env
-numpy>=1.26.0
-tqdm>=4.66.0                      # Progress bars
-requests>=2.32.0
+# --- Legacy Dashboard Frontends (If Applicable) ---
+streamlit==1.35.0
+streamlit-extras==0.4.0

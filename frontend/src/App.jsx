@@ -37,6 +37,8 @@ function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef(null);
 
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+
   // Toggle theme hook
   useEffect(() => {
     if (isDarkMode) {
@@ -56,7 +58,7 @@ function App() {
   const fetchHistory = async () => {
     if (!token) return;
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/history", {
+      const res = await fetch(`${API_BASE_URL}/api/history`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) setHistory(await res.json());
@@ -71,7 +73,7 @@ function App() {
     setAuthMessage(null);
     const endpoint = isSignUp ? "signup" : "login";
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/auth/${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: authEmail, password: authPassword })
@@ -89,28 +91,8 @@ function App() {
     } catch (err) { setAuthMessage({ type: "error", text: err.message }); }
   };
 
-  // Run Extraction Pipeline
-//   const handleSubmission = async (e) => {
-//     e.preventDefault();
-//     if (!url) return;
-//     setStatus("processing"); setError(null); setChatHistory([]);
 
-//     try {
-//       const response = await fetch("http://127.0.0.1:8000/api/process-video", {
-//         method: "POST",
-//         headers: { 
-//           "Content-Type": "application/json",
-//           "Authorization": `Bearer ${token}`
-//         },
-//         body: JSON.stringify({ url, language }),
-//       });
-//       if (!response.ok) throw new Error("Server rejected request configuration.");
-//       const result = await response.json();
-//       setTaskId(result.task_id);
-//     } catch (err) { setError(err.message); setStatus("failed"); }
-//   };
 
-//--------------------------------------------------------------------------------------------------------------
 const handleSubmission = async (e) => {
     e.preventDefault();
     setStatus("processing"); setError(null); setChatHistory([]);
@@ -120,7 +102,7 @@ const handleSubmission = async (e) => {
       
       if (uploadMode === "url") {
         if (!url) return;
-        response = await fetch("http://127.0.0.1:8000/api/process-video", {
+        response = await fetch(`${API_BASE_URL}/api/process-video`, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
@@ -139,7 +121,7 @@ const handleSubmission = async (e) => {
         formData.append("file", selectedFile);
         formData.append("language", language);
         
-        response = await fetch(`http://127.0.0.1:8000/api/upload-video?language=${language}`, {
+        response = await fetch(`${API_BASE_URL}/api/upload-video?language=${language}`, {
           method: "POST",
           headers: { 
             "Authorization": `Bearer ${token}`
@@ -158,22 +140,15 @@ const handleSubmission = async (e) => {
       setTaskId(result.task_id);
     } catch (err) { setError(err.message); setStatus("failed"); }
   };
-//--------------------------------------------------------------------------------------------------------------
 
 
 
-
-
-
-
-
-  // Poll Background Worker status 
   
   useEffect(() => {
     if (!taskId || status !== "processing") return;
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:8000/api/task-status/${taskId}`);
+        const response = await fetch(`${API_BASE_URL}/api/task-status/${taskId}`);
         const result = await response.json();
         if (result.status === "completed") {
           clearInterval(interval);
@@ -195,11 +170,11 @@ const handleSubmission = async (e) => {
     setChatHistory([]); // Clear any previous video's UI chat history state
     
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/task-status/${historicalTaskId}`);
+      const response = await fetch(`${API_BASE_URL}/api/task-status/${historicalTaskId}`);
       const result = await response.json();
       setData(result);
       
-      const chatResponse = await fetch(`http://127.0.0.1:8000/api/chat-history/${historicalTaskId}`, {
+      const chatResponse = await fetch(`${API_BASE_URL}/api/chat-history/${historicalTaskId}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       
@@ -227,7 +202,7 @@ const handleSubmission = async (e) => {
     setQuestion(""); setChatLoading(true);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/chat", {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -542,7 +517,7 @@ const handleSubmission = async (e) => {
                   type="submit" 
                   className="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white text-sm font-semibold py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/20 cursor-pointer"
                 >
-                  Execute Processing Pipeline
+                  Execute Video Processing
                 </button>
               </form>
             </div>
@@ -560,7 +535,7 @@ const handleSubmission = async (e) => {
                   Extracting Media Context Blocks...
                 </h3>
                 <p className={`text-xs px-4 max-w-xs mx-auto leading-relaxed ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                  Running algorithmic audio segmentation mapping, matrix vector embedding calculations, and generating notes.
+                  Running algorithmic audio segmentation mapping, vector embedding calculations, and generating notes.
                 </p>
               </div>
             </div>
@@ -603,10 +578,10 @@ const handleSubmission = async (e) => {
                   </div>
                   
                   {/* Render context data content frame box */}
-                  <div className={`p-5 overflow-y-auto flex-1 text-s leading-relaxed whitespace-pre-line font-medium ${
+                  <div className={`p-5 overflow-y-auto flex-1 text-s leading-relaxed whitespace-pre-line font-medium react-markdown ${
                     isDarkMode ? "text-gray-300" : "text-gray-700"
                   }`}>
-                    {data[activeTab] || "Context parameter block empty for current selection map."}
+                    {data[activeTab] || "No Context Available."}
                   </div>
                 </div>
 
@@ -626,7 +601,7 @@ const handleSubmission = async (e) => {
                     {chatHistory.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
                         <span className="text-3xl">💬</span>
-                        <h4 className={`text-s font-bold ${isDarkMode ? "text-gray-400" : "text-gray-700"}`}>Context Verification Loaded</h4>
+                        <h4 className={`text-s font-bold ${isDarkMode ? "text-gray-400" : "text-gray-700"}`}>Video Context Loaded</h4>
                         <p className="text-[14px] text-gray-500 max-w-xs leading-relaxed">Ask anything about discussions, timestamps, action trackers, or conceptual statements.</p>
                       </div>
                     ) : (

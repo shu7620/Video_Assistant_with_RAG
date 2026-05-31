@@ -1,42 +1,42 @@
 import os
 import uuid
 import logging
-from typing import Dict, Any
-from fastapi import FastAPI, BackgroundTasks, HTTPException, status, Depends,UploadFile, File
+from typing import Dict, Any, List
+from fastapi import FastAPI, BackgroundTasks, HTTPException, status, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 import shutil
-import yt_dlp
-from pydub import AudioSegment
+from langchain_mistralai import ChatMistralAI
 
 # Core RAG/Extraction Imports
-from utils.audio_processor import process_input,process_local_input
+from utils.audio_processor import process_input, process_local_input
 from core.transcriber import transcribe_all
-from core.summarize import summarize_transcript, generate_title
-from core.extractor import extract_action_items, extract_key_decisions, extract_questions
+from core.summarize import rate_limit_safe_llm
 from core.vector_store import build_vector_store
 from core.rag_engine import load_rag_chain, ask_question
+from core.config import settings, db, Shared_llm
 
-# New Auth & DB Imports
-from core.auth import get_db, hash_password, verify_password, create_access_token, get_current_user, UserModel, AnalysisModel, ChatMessageModel
+# MongoDB Auth Collections & Helpers
+from core.auth import get_current_user, hash_password, verify_password, create_access_token, users_col, analyses_col, chats_col
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Video Assistant Authenticated API")
 
+# Overhaul the CORSMiddleware implementation block:
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=settings.ALLOWED_ORIGINS,  # Dynamically loads values from your .env file
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Still using tasks_db to keep track of transient background loading tasks
-tasks_db: Dict[str, Dict[str, Any]] = {}
+# Persistent Tasks collection instance mapping straight to MongoDB pool initialization
+tasks_col = db[settings.TASKS_COLLECTION]
 
 # --- SCHEMAS ---
 class AuthRequest(BaseModel):
@@ -50,328 +50,271 @@ class VideoRequest(BaseModel):
 class ChatRequest(BaseModel):
     task_id: str
     question: str
+    
+class VideoAnalysisSchema(BaseModel):
+    title: str = Field(description="A concise catchy title for the video presentation.")
+    summary: str = Field(description="A high-level comprehensive bullet-pointed outline paragraph summary.")
+    action_items: List[str] = Field(description="A list of action items, technical assignments, or tasks.")
+    key_decisions: List[str] = Field(description="A list of core architectures, frameworks chosen, or agreements resolved.")
+    open_questions: List[str] = Field(description="A list of unresolved questions, confusing definitions, or follow-ups.")
+    
+# --- PRODUCTION CACHE CLEANUP ON SERVER STARTUP ---
+@app.on_event("startup")
+def startup_clean_cached_files():
+    """
+    Sweeps your temporary directories cleanly upon application startup.
+    This guarantees that orphaned file remnants don't slowly exhaust your server disk.
+    """
+    cache_dirs = ["downloads", "temp_uploads"]
+    logger.info("🧹 Initializing startup disk storage housecleaning sweeps...")
+    
+    for folder in cache_dirs:
+        if os.path.exists(folder):
+            try:
+                for filename in os.listdir(folder):
+                    file_path = os.path.join(folder, filename)
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.remove(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                logger.info(f"✅ Successfully emptied temporary directory: '{folder}/'")
+            except Exception as e:
+                logger.error(f"⚠️ Problem clearing remnants out of '{folder}': {str(e)}")
+        else:
+            os.makedirs(folder, exist_ok=True)
+            logger.info(f"📁 Created missing operational folder container: '{folder}/'")
+    
+# --- HELPER: SAFE SINGLE-PASS EXTRACTION EXECUTOR ---
+def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
+    """
+    Isolates the LangChain runnable extraction execution block to ensure 
+    the rate_limit_safe_llm decorator functions correctly.
+    """
+    structured_llm = Shared_llm.with_structured_output(VideoAnalysisSchema)
+    prompt = f"Analyze this video transcript and extract all metadata requirements cleanly:\n{transcript_str}"
+    
+    # Define a localized wrapper function that our decorator can monitor safely
+    @rate_limit_safe_llm(max_retries=5, initial_delay=15)
+    def invoke_llm():
+        return structured_llm.invoke(prompt)
+        
+    return invoke_llm()
 
 # --- AUTH ENDPOINTS ---
 @app.post("/api/auth/signup")
-def signup(payload: AuthRequest, db: Session = Depends(get_db)):
-    existing_user = db.query(UserModel).filter(UserModel.email == payload.email).first()
-    if existing_user:
+def signup(payload: AuthRequest):
+    if users_col.find_one({"email": payload.email}):
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
     
-    new_user = UserModel(email=payload.email, hashed_password=hash_password(payload.password))
-    db.add(new_user)
-    db.commit()
+    users_col.insert_one({
+        "email": payload.email,
+        "hashed_password": hash_password(payload.password),
+        "created_at": datetime.utcnow()
+    })
     return {"message": "Account created successfully. You can now log in!"}
 
 @app.post("/api/auth/login")
-def login(payload: AuthRequest, db: Session = Depends(get_db)):
-    user = db.query(UserModel).filter(UserModel.email == payload.email).first()
-    if not user or not verify_password(payload.password, user.hashed_password):
+def login(payload: AuthRequest):
+    user = users_col.find_one({"email": payload.email})
+    if not user or not verify_password(payload.password, user["hashed_password"]):
         raise HTTPException(status_code=400, detail="Invalid email or password.")
     
-    access_token = create_access_token(data={"sub": user.email})
+    access_token = create_access_token(data={"sub": user["email"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
-# --- BACKGROUND WORKER ENGINE ---
-# def async_video_processing_worker(task_id: str, user_id: int, source_url: str, language: str):
-#     chunks_created = []
-#     try:
-#         chunks_created = process_input(source_url)
-#         master_transcript = transcribe_all(chunks_created, language=language)
-        
-#         if not master_transcript.strip():
-#             raise ValueError("Empty text transcript generated.")
-
-#         db_storage_path = f"vector_db_{task_id}"
-#         build_vector_store(master_transcript, persist_dir=db_storage_path)
-
-#         video_title = generate_title(master_transcript)
-#         video_summary = summarize_transcript(master_transcript)
-#         action_items_str = extract_action_items(master_transcript)
-#         key_decisions_str = extract_key_decisions(master_transcript)
-#         open_questions_str = extract_questions(master_transcript)
-
-#         # Write analysis to SQLite database persistently!
-#         db = next(get_db())
-#         db_analysis = AnalysisModel(
-#             id=task_id,
-#             user_id=user_id,
-#             video_url=source_url,
-#             title=video_title.strip(),
-#             summary=video_summary.strip(),
-#             action_items=action_items_str.strip(),
-#             key_decisions=key_decisions_str.strip(),
-#             open_questions=open_questions_str.strip(),
-#             vector_db_path=db_storage_path
-#         )
-#         db.add(db_analysis)
-#         db.commit()
-
-#         # Mark in memory tracker as completed
-#         tasks_db[task_id] = {"status": "completed"}
-
-#     except Exception as e:
-#         logger.error(f"Task failure -> {str(e)}")
-#         tasks_db[task_id] = {"status": "failed", "error": str(e)}
-#     finally:
-#         for chunk_file in chunks_created:
-#             if os.path.exists(chunk_file):
-#                 os.remove(chunk_file)
-
-#-----------------------------------------------------------------------------------------------------------------------------
-
-
-def async_video_processing_worker(task_id: str, user_id: int, source_url: str, language: str):
+# --- BACKGROUND WORKERS (NATIVE MONGODB STATUS TRACKING) ---
+def async_video_processing_worker(task_id: str, user_id: str, source_url: str, language: str):
     chunks_created = []
     try:
-        # 1. Download & Slice Audio chunks (default is 10 min blocks)
         chunks_created = process_input(source_url)
-        
-        # 2. Get timestamped text segment dictionaries
-        # Returns: [{"start": 0.0, "end": 4.5, "text": "Hello..."}, ...]
         timestamped_segments = transcribe_all(chunks_created, language=language, chunk_minutes=10)
         
         if not timestamped_segments:
             raise ValueError("No transcript segments generated.")
 
-        # 3. Compile a plain text string for old legacy summary/extractor scripts
         master_transcript_str = "\n".join([f"[{seg['start']}] {seg['text']}" for seg in timestamped_segments])
+        build_vector_store(timestamped_segments, task_id=task_id)
 
-        # 4. Build the modern vector store containing the timestamped metadata!
-        db_storage_path = f"vector_db_{task_id}"
-        build_vector_store(timestamped_segments, persist_dir=db_storage_path)
+        logger.info(f"🤖 Running Forced Single-Pass Unified Extraction Profile for Task: {task_id}")
+        analysis_result = execute_safe_single_pass(master_transcript_str)
+            
+        title = analysis_result.title.strip()
+        summary = analysis_result.summary.strip()
+        action_items = analysis_result.action_items
+        key_decisions = analysis_result.key_decisions
+        open_questions = analysis_result.open_questions
 
-        # 5. Extract summaries and elements as usual using the text string
-        video_title = generate_title(master_transcript_str)
-        video_summary = summarize_transcript(master_transcript_str)
-        action_items_str = extract_action_items(master_transcript_str)
-        key_decisions_str = extract_key_decisions(master_transcript_str)
-        open_questions_str = extract_questions(master_transcript_str)
+        # Convert the Python lists cleanly into Markdown lists with type/existence checks
+        action_items_str = "\n".join([f"- {str(item).strip()}" for item in action_items if str(item).strip()])
+        key_decisions_str = "\n".join([f"- {str(item).strip()}" for item in key_decisions if str(item).strip()])
+        open_questions_str = "\n".join([f"- {str(item).strip()}" for item in open_questions if str(item).strip()])
 
-        # 6. Save data to SQLite Database persistently
-        db = next(get_db())
-        db_analysis = AnalysisModel(
-            id=task_id,
-            user_id=user_id,
-            video_url=source_url,
-            title=video_title.strip(),
-            summary=video_summary.strip(),
-            action_items=action_items_str.strip(),
-            key_decisions=key_decisions_str.strip(),
-            open_questions=open_questions_str.strip(),
-            vector_db_path=db_storage_path
-        )
-        db.add(db_analysis)
-        db.commit()
-
-        tasks_db[task_id] = {"status": "completed"}
-
+        analyses_col.insert_one({
+            "_id": task_id,
+            "user_id": user_id,
+            "video_url": source_url,
+            "title": title,
+            "summary": summary,
+            "action_items": action_items_str.strip(),
+            "key_decisions": key_decisions_str.strip(),
+            "open_questions": open_questions_str.strip(),
+            "created_at": datetime.utcnow()
+        })
+        
+        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "completed"}})
+        logger.info(f"✅ Remote video ingestion pipeline completed successfully for task: {task_id}")
+        
     except Exception as e:
-        logger.error(f"Task failure -> {str(e)}")
-        tasks_db[task_id] = {"status": "failed", "error": str(e)}
+        logger.error(f"Unified Ingestion Task failure -> {str(e)}")
+        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "failed", "error": str(e)}})
     finally:
         for chunk_file in chunks_created:
             if os.path.exists(chunk_file):
                 os.remove(chunk_file)
-                
 
-
-# --- NEW BACKGROUND WORKER FOR LOCAL VIDEOS ---
-def async_local_video_worker(task_id: str, user_id: int, temporary_video_path: str, language: str):
+def async_local_video_worker(task_id: str, user_id: str, temporary_video_path: str, language: str):
     chunks_created = []
-    # Capture a readable video title from the uploaded file name
     clean_video_filename = os.path.basename(temporary_video_path)
-    
     try:
-        # 1. Route file extraction and text block chunking through the updated utility module
         chunks_created = process_local_input(temporary_video_path)
-        
-        # 2. Extract timestamped transcript segments
         timestamped_segments = transcribe_all(chunks_created, language=language, chunk_minutes=10)
         
         if not timestamped_segments:
             raise ValueError("No transcript segments generated from local media track.")
 
-        # 3. Create the plain string text sequence for summaries and analytics tools
         master_transcript_str = "\n".join([f"[{seg['start']}] {seg['text']}" for seg in timestamped_segments])
+        build_vector_store(timestamped_segments, task_id=task_id)
 
-        # 4. Initialize vector base storage configuration tracking parameters
-        db_storage_path = f"vector_db_{task_id}"
-        build_vector_store(timestamped_segments, persist_dir=db_storage_path)
+        logger.info(f"🤖 Running Forced Single-Pass Unified Extraction Profile for Local Task: {task_id}")
+        analysis_result = execute_safe_single_pass(master_transcript_str)
+            
+        title = analysis_result.title.strip()
+        summary = analysis_result.summary.strip()
+        action_items = analysis_result.action_items
+        key_decisions = analysis_result.key_decisions
+        open_questions = analysis_result.open_questions
 
-        # 5. Extract multi-tab summary data maps via your extraction engines
-        video_title = generate_title(master_transcript_str)
-        # Fallback safety checking logic if generated title returns empty anomalies
-        if not video_title.strip() or "error" in video_title.lower():
-            video_title = clean_video_filename
+        if not title or "error" in title.lower():
+            title = clean_video_filename
 
-        video_summary = summarize_transcript(master_transcript_str)
-        action_items_str = extract_action_items(master_transcript_str)
-        key_decisions_str = extract_key_decisions(master_transcript_str)
-        open_questions_str = extract_questions(master_transcript_str)
+        action_items_str = "\n".join([f"- {str(item).strip()}" for item in action_items if str(item).strip()])
+        key_decisions_str = "\n".join([f"- {str(item).strip()}" for item in key_decisions if str(item).strip()])
+        open_questions_str = "\n".join([f"- {str(item).strip()}" for item in open_questions if str(item).strip()])
 
-        # 6. Save persistent record data metrics down to SQLite database
-        db = next(get_db())
-        db_analysis = AnalysisModel(
-            id=task_id,
-            user_id=user_id,
-            video_url="Local Uploaded File",
-            title=video_title.strip(),
-            summary=video_summary.strip(),
-            action_items=action_items_str.strip(),
-            key_decisions=key_decisions_str.strip(),
-            open_questions=open_questions_str.strip(),
-            vector_db_path=db_storage_path
-        )
-        db.add(db_analysis)
-        db.commit()
-
-        tasks_db[task_id] = {"status": "completed"}
-
+        analyses_col.insert_one({
+            "_id": task_id,
+            "user_id": user_id,
+            "video_url": "Local Uploaded File",
+            "title": title,
+            "summary": summary,
+            "action_items": action_items_str.strip(),
+            "key_decisions": key_decisions_str.strip(),
+            "open_questions": open_questions_str.strip(),
+            "created_at": datetime.utcnow()
+        })
+        
+        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "completed"}})
+        logger.info(f"✅ Local video ingestion pipeline completed successfully for task: {task_id}")
+        
     except Exception as e:
         logger.error(f"Local video pipeline task failure -> {str(e)}")
-        tasks_db[task_id] = {"status": "failed", "error": str(e)}
+        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "failed", "error": str(e)}})
     finally:
-        # CLEANUP: Delete the original temporary uploaded video asset file and all temporary micro audio chunks
         if os.path.exists(temporary_video_path):
             os.remove(temporary_video_path)
         for chunk_file in chunks_created:
             if os.path.exists(chunk_file):
-                os.remove(chunk_file)            
+                os.remove(chunk_file)
 
-#---------------------------------------------------------------------------------------------------------
-
-# --- PROTECTED PIPELINE ENDPOINTS ---
+# --- PIPELINE ENDPOINTS ---
 @app.post("/api/process-video", status_code=status.HTTP_202_ACCEPTED)
-async def process_video(payload: VideoRequest, background_tasks: BackgroundTasks, current_user: UserModel = Depends(get_current_user)):
+async def process_video(payload: VideoRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     task_id = str(uuid.uuid4())
-    tasks_db[task_id] = {"status": "processing"}
-    
-    background_tasks.add_task(
-        async_video_processing_worker, 
-        task_id, current_user.id, payload.url, payload.language.lower().strip()
-    )
+    tasks_col.insert_one({"_id": task_id, "status": "processing", "created_at": datetime.utcnow()})
+    background_tasks.add_task(async_video_processing_worker, task_id, current_user["id"], payload.url, payload.language.lower().strip())
     return {"task_id": task_id, "status": "processing"}
 
 @app.get("/api/task-status/{task_id}")
-async def get_task_status(task_id: str, db: Session = Depends(get_db)):
-    # Check transient memory dictionary first
-    if task_id in tasks_db:
-        task_info = tasks_db[task_id]
+async def get_task_status(task_id: str):
+    task_info = tasks_col.find_one({"_id": task_id})
+    if task_info:
         if task_info["status"] == "processing":
             return {"status": "processing"}
         if task_info["status"] == "failed":
             return {"status": "failed", "error": task_info.get("error")}
 
-    # If completed or historical, grab directly from SQLite database
-    record = db.query(AnalysisModel).filter(AnalysisModel.id == task_id).first()
+    record = analyses_col.find_one({"_id": task_id})
     if record:
         return {
             "status": "completed",
-            "title": record.title,
-            "summary": record.summary,
-            "action_items": record.action_items,
-            "key_decisions": record.key_decisions,
-            "open_questions": record.open_questions
+            "title": record["title"],
+            "summary": record["summary"],
+            "action_items": record["action_items"],
+            "key_decisions": record["key_decisions"],
+            "open_questions": record["open_questions"]
         }
-    
-    raise HTTPException(status_code=404, detail="Task or analysis profile not found.")
+    raise HTTPException(status_code=404, detail="Task or analysis profile index tracking entry not found.")
 
 @app.get("/api/history")
-def get_user_history(current_user: UserModel = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Retrieves all past analytical entries owned explicitly by the active authenticated user."""
-    history = db.query(AnalysisModel).filter(AnalysisModel.user_id == current_user.id).all()
+def get_user_history(current_user: dict = Depends(get_current_user)):
+    history = analyses_col.find({"user_id": current_user["id"]}).sort("created_at", -1)
     return [
         {
-            "task_id": item.id,
-            "title": item.title,
-            "video_url": item.video_url,
-            "created_at": datetime.now().strftime("%Y-%m-%d") # Mock tracking date metric placeholder
+            "task_id": item["_id"],
+            "title": item["title"],
+            "video_url": item["video_url"],
+            "created_at": item.get("created_at", datetime.utcnow()).strftime("%Y-%m-%d")
         } for item in history
     ]
 
-# @app.post("/api/chat")
-# async def chat_with_video(payload: ChatRequest, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
-#     record = db.query(AnalysisModel).filter(AnalysisModel.id == payload.task_id).first()
-#     if not record:
-#         raise HTTPException(status_code=404, detail="Analysis context target not found inside database storage.")
-
-#     try:
-#         rag_chain = load_rag_chain(persist_dir=record.vector_db_path)
-#         answer = ask_question(rag_chain, payload.question)
-#         return {"answer": answer}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
-
-# 2. Update the existing /api/chat endpoint to save conversations to the database:
 @app.post("/api/chat")
-async def chat_with_video(payload: ChatRequest, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
-    record = db.query(AnalysisModel).filter(AnalysisModel.id == payload.task_id).first()
+async def chat_with_video(payload: ChatRequest, current_user: dict = Depends(get_current_user)):
+    record = analyses_col.find_one({"_id": payload.task_id})
     if not record:
         raise HTTPException(status_code=404, detail="Analysis context target not found inside database storage.")
 
     try:
-        # Generate the answer from your RAG engine
-        rag_chain = load_rag_chain(persist_dir=record.vector_db_path)
-        answer = ask_question(rag_chain, payload.question)
+        rag_chain = load_rag_chain(task_id=payload.task_id)
+        answer = await run_in_threadpool(ask_question, rag_chain, payload.question)
         
-        # PERSISTENCE CHANGE: Save User Question
-        user_msg = ChatMessageModel(analysis_id=payload.task_id, sender="user", text=payload.question)
-        # PERSISTENCE CHANGE: Save AI Answer
-        ai_msg = ChatMessageModel(analysis_id=payload.task_id, sender="ai", text=answer)
-        
-        db.add(user_msg)
-        db.add(ai_msg)
-        db.commit()
-
+        chats_col.insert_many([
+            {"analysis_id": payload.task_id, "sender": "user", "text": payload.question, "timestamp": datetime.utcnow()},
+            {"analysis_id": payload.task_id, "sender": "ai", "text": answer, "timestamp": datetime.utcnow()}
+        ])
         return {"answer": answer}
     except Exception as e:
+        logger.error(f"Chat pipeline processing failed -> {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    
-    
 
-# 3. Add this completely NEW endpoint to retrieve conversation history for a specific video:
 @app.get("/api/chat-history/{task_id}")
-def get_chat_history(task_id: str, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
-    # Verify the video analysis exists and belongs to a user session
-    record = db.query(AnalysisModel).filter(AnalysisModel.id == task_id).first()
+def get_chat_history(task_id: str, current_user: dict = Depends(get_current_user)):
+    record = analyses_col.find_one({"_id": task_id})
     if not record:
         raise HTTPException(status_code=404, detail="Analysis profile not found.")
         
-    messages = db.query(ChatMessageModel).filter(ChatMessageModel.analysis_id == task_id).order_by(ChatMessageModel.id.asc()).all()
-    
-    return [{"sender": msg.sender, "text": msg.text} for msg in messages]
+    messages = chats_col.find({"analysis_id": task_id}).sort("timestamp", 1)
+    return [{"sender": msg["sender"], "text": msg["text"]} for msg in messages]
 
-
-# --- NEW PROTECTED UPLOAD ROUTE ---
 @app.post("/api/upload-video", status_code=status.HTTP_202_ACCEPTED)
 async def upload_local_video(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     language: str = "english",
-    current_user: UserModel = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-    # Enforce safe file extension check constraints
     allowed_extensions = [".mp4", ".mkv", ".avi", ".mp3", ".wav", ".m4a"]
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in allowed_extensions:
-        raise HTTPException(status_code=400, detail=f"Unsupported file extension format. Use: {', '.join(allowed_extensions)}")
+        raise HTTPException(status_code=400, detail="Unsupported file extension format.")
 
     task_id = str(uuid.uuid4())
-    tasks_db[task_id] = {"status": "processing"}
+    tasks_col.insert_one({"_id": task_id, "status": "processing", "created_at": datetime.utcnow()})
     
-    # Create a temporary directory path to save the incoming binary network stream chunk safely
     os.makedirs("temp_uploads", exist_ok=True)
     temporary_video_path = f"temp_uploads/{task_id}{file_ext}"
     
     with open(temporary_video_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    # Handoff video processing task to background thread worker pool
-    background_tasks.add_task(
-        async_local_video_worker, 
-        task_id, current_user.id, temporary_video_path, language.lower().strip()
-    )
-    
+    background_tasks.add_task(async_local_video_worker, task_id, current_user["id"], temporary_video_path, language.lower().strip())
     return {"task_id": task_id, "status": "processing"}

@@ -1,14 +1,12 @@
 import re
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_mistralai import ChatMistralAI
+from core.config import Correction_llm
 import os
 from dotenv import load_dotenv
 load_dotenv()
 
 
-# set temperature to 0 as we want determistic output
-Correction_llm= ChatMistralAI(model="mistral-small-latest",mistral_api_key=os.getenv("MISTRAL_API_KEY"),temperature=0.0,max_retries=3)
 
 def basic_text_cleaner(text:str)->str:
     """Uses regex and rules to remove conversational fluff, extra spaces, and symbols."""
@@ -71,11 +69,9 @@ Output: "action items for vivek"
     
     try:
         normalized_query=normalization_chain.invoke({'query':cleaned_query})
-        print(f"🔮 Query Normalizer: '{raw_query}' → '{normalized_query.strip()}'")
         return normalized_query.strip()
     except Exception as e:
         # Fallback safety: If the LLM network call fails, don't crash the app, use the rule-cleaned query
-        print(f"⚠️ Query Normalizer failed: {str(e)}. Falling back to base text.")
         return cleaned_query if cleaned_query else raw_query
     
 

@@ -1,10 +1,45 @@
-from langchain_mistralai import ChatMistralAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from core.config import Shared_llm
 import os
 
-Shared_llm= ChatMistralAI(model="mistral-small-latest",mistral_api_key=os.getenv("MISTRAL_API_KEY"),temperature=0.3,max_retries=5)
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+
+
+def rate_limit_safe_llm(max_retries: int = 5, initial_delay: int = 15, backoff_factor: int = 2):
+    """
+    A decorator to safeguard synchronous LangChain/LLM invocations 
+    against HTTP 429 Rate Limits using exponential backoff.
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if "429" in error_msg or "rate limit" in error_msg or "rate_limited" in error_msg:
+                        logger.warning(
+                            f"⚠️ Mistral AI Ingestion Rate Limit Hit (HTTP 429) during execution of '{func.__name__}'. "
+                            f"⏳ Cooling down: Sleeping for {delay} seconds before retry (Attempt {attempt + 1}/{max_retries})..."
+                        )
+                        time.sleep(delay)
+                        delay *= backoff_factor  # Exponentially increase wait window bounds
+                        continue
+                    else:
+                        raise e  # Fail immediately on non-rate-limit errors
+            raise RuntimeError(f"❌ '{func.__name__}' exhausted all {max_retries} rate limit recovery windows.")
+        return wrapper
+    return decorator
+
+
 
 
 def split_transcript(transcript:str)->list:
@@ -12,6 +47,7 @@ def split_transcript(transcript:str)->list:
     splitter=RecursiveCharacterTextSplitter(chunk_size=3000,chunk_overlap=200)
     return splitter.split_text(transcript)
 
+@rate_limit_safe_llm(max_retries=5, initial_delay=15)
 def summarize_transcript(transcript:str)->str:
     
     map_prompt=ChatPromptTemplate.from_messages(
@@ -43,6 +79,7 @@ def summarize_transcript(transcript:str)->str:
     return combined_chain.invoke({"combined":combined})
 
 
+@rate_limit_safe_llm(max_retries=5, initial_delay=15)
 def generate_title(transcript:str)->str:
     
     title_prompt=ChatPromptTemplate.from_messages(
