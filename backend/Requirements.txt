@@ -33,7 +33,6 @@ huggingface-hub==0.23.0
 yt-dlp==2024.4.9
 pydub==0.25.1
 ffmpeg-python==0.2.0
-ffmpeg==1.4
 openai-whisper==20231117
 
 # --- Authentication, Encryption & Security Validation ---
@@ -45,7 +44,6 @@ pydantic[email]==2.13.4
 fpdf2==2.7.9
 reportlab==4.2.0
 deep-translator==1.11.4
-quickjs==1.19.4
 
 # --- Legacy Dashboard Frontends (If Applicable) ---
 streamlit==1.35.0
