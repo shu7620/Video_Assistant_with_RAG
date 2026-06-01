@@ -10,12 +10,23 @@ load_dotenv()
 
 ATLAS_INDEX_NAME = "vector_index"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+GLOBAL_EMBEDDINGS = None
 
-# --- FIX 1: CACHE EMBEDDINGS GLOBALLY ---
-# This forces the application to download/load the model files into memory exactly ONCE 
-# during backend startup, rather than every single time a user sends a message.
-
-GLOBAL_EMBEDDINGS = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+def load_embedding():
+    """
+    Implements a thread-safe Lazy Initialization Singleton pattern.
+    The HuggingFace model will ONLY load into RAM when this function 
+    is explicitly called, and exactly once.
+    """
+    global GLOBAL_EMBEDDINGS
+    
+    if GLOBAL_EMBEDDINGS is None:
+        print("📥 Loading HuggingFace Embedding Model into memory for the first time...")
+        GLOBAL_EMBEDDINGS = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    else:
+        print("🔄 Reusing already cached global embedding model instance.")
+        
+    return GLOBAL_EMBEDDINGS
 
 
 def load_embedding():
