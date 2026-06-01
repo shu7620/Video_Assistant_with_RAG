@@ -13,28 +13,44 @@ def download_youtube_audio(url: str) -> str:
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
     
     # Extract path from environment variable, falling back gracefully if missing
-    ffmpeg_env_path = os.getenv("FFMPEG_BINARY_PATH")
-    if not ffmpeg_env_path:
-        ffmpeg_env_path = r"C:\Users\shubh\Downloads\ffmpeg-2026-05-25-git-34dfa8bf2b-full_build\bin"
+    # ffmpeg_env_path = os.getenv("FFMPEG_BINARY_PATH")
+    # if not ffmpeg_env_path:
+    #     ffmpeg_env_path = r"C:\Users\shubh\Downloads\ffmpeg-2026-05-25-git-34dfa8bf2b-full_build\bin"
+
+    # ydl_opts = {
+    #     "format": "bestaudio/best",
+    #     "outtmpl": output_path,
+    #     "ffmpeg_location": ffmpeg_env_path,  # 👈 Dynamic path assignment
+    #     "postprocessors": [
+    #         {
+    #             "key": "FFmpegExtractAudio",
+    #             "preferredcodec": "wav",
+    #             "preferredquality": "192",
+    #         }
+    #     ],
+    #     'cookiefile': 'www.youtube.com_cookies.txt',
+    #     "quiet": True,
+    # }
 
     ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": output_path,
-        "ffmpeg_location": ffmpeg_env_path,  # 👈 Dynamic path assignment
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "wav",
-                "preferredquality": "192",
-            }
-        ],
-        'cookiefile': 'www.youtube.com_cookies.txt',
-        "quiet": True,
-    }
+    "format": "bestaudio/best",
+    "outtmpl": output_path,
+    "postprocessors": [
+        {
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "wav",
+            "preferredquality": "192",
+        }
+    ],
+    "cookiefile": "www.youtube.com_cookies.txt",
+    "quiet": True,
+}
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info).replace('.webm', '.wav').replace('.m4a', '.wav')
+        # filename = ydl.prepare_filename(info).replace('.webm', '.wav').replace('.m4a', '.wav')
+        original_file = ydl.prepare_filename(info)
+        filename = os.path.splitext(original_file)[0] + ".wav"
     
     return filename
 
