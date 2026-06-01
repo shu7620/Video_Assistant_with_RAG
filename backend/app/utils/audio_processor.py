@@ -28,6 +28,7 @@ def download_youtube_audio(url: str) -> str:
                 "preferredquality": "192",
             }
         ],
+        'cookiefile': 'www.youtube.com_cookies.txt',
         "quiet": True,
     }
     
