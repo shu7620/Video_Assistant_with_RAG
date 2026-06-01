@@ -1,25 +1,23 @@
-# --- Core Web & Runtime Infrastructure ---
+# Core
 fastapi==0.136.3
 uvicorn==0.48.0
 python-dotenv==1.0.0
+python-multipart==0.0.9
 requests==2.32.0
 tqdm==4.66.0
 watchdog==4.0.0
 
-# --- The Strict LangChain 0.2 Ecosystem Grid ---
-# Extracted directly from your workspace lockfile to guarantee zero collisions
+# LangChain stack
 langchain==0.2.17
 langchain-core==0.2.43
 langchain-community==0.2.19
 langchain-mistralai==0.1.12
-langchain-mongodb
+langchain-mongodb==0.11.0
 
-# --- Database Drivers & Utilities ---
-# Lowering this ensures langchain-mongodb joins smoothly without a 1.x upgrade barrier
+# Database
 pymongo[srv]==4.8.0
 
-# --- Heavy ML & Local Inference Engines ---
-# Keeps HuggingFaceEmbeddings working natively on startup without RAM drops
+# Embeddings / ML
 torch==2.2.0
 torchaudio==2.2.0
 sentence-transformers==3.0.0
@@ -28,24 +26,19 @@ huggingface-hub==0.23.0
 flashrank==0.2.10
 tiktoken==0.7.0
 
-# --- Audio Ingestion & File Processing ---
+# Audio
 yt-dlp==2024.4.9
 pydub==0.25.1
 ffmpeg-python==0.2.0
 openai-whisper==20231117
 
-# --- Pre-compiled Security Frameworks ---
-# Separated to bypass the old setuptools 'pkg_resources' build crashes entirely
+# Security
 pyjwt[crypto]==2.13.0
 passlib==1.7.4
 argon2-cffi==25.1.0
 pydantic[email]==2.13.4
 
-# --- Miscellaneous Helpers & Dashboard Frontends ---
+# Utilities
 fpdf2==2.7.9
 reportlab==4.2.0
 deep-translator==1.11.4
-streamlit==1.35.0
-streamlit-extras==0.4.0
-
-python-multipart
