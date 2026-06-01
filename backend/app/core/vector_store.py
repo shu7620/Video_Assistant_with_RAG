@@ -29,8 +29,7 @@ def load_embedding():
     return GLOBAL_EMBEDDINGS
 
 
-def load_embedding():
-    return GLOBAL_EMBEDDINGS
+
 
 def format_seconds_to_timestamp(seconds: float) -> str:
     mins = int(seconds // 60)
