@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: .
+    container_name: video-assistant-backend
+    restart: always
+
+    env_file:
+      - .env
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./downloads:/app/downloads
+      - ./temp_uploads:/app/temp_uploads
