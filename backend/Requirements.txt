@@ -12,7 +12,7 @@ langchain==0.2.17
 langchain-core==0.2.43
 langchain-community==0.2.19
 langchain-mistralai==0.1.12
-langchain-mongodb==0.11.0
+langchain-mongodb==0.1.8
 
 # Database
 pymongo[srv]==4.8.0
@@ -30,7 +30,7 @@ tiktoken==0.7.0
 yt-dlp==2024.4.9
 pydub==0.25.1
 ffmpeg-python==0.2.0
-openai-whisper==20231117
+openai-whisper
 
 # Security
 pyjwt[crypto]==2.13.0
