@@ -27,7 +27,7 @@ flashrank==0.2.10
 tiktoken==0.7.0
 
 # Audio
-yt-dlp==2024.4.9
+yt-dlp
 pydub==0.25.1
 ffmpeg-python==0.2.0
 openai-whisper
