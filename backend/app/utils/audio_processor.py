@@ -46,14 +46,8 @@ def download_youtube_audio(url: str) -> str:
 #     "quiet": True,
 # }
     ydl_opts = {
-    "format": "bestaudio/best",
-
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android"]
-        }
-    },
-
+    "format": "18",
+    "outtmpl": output_path,
     "postprocessors": [
         {
             "key": "FFmpegExtractAudio",
@@ -61,7 +55,6 @@ def download_youtube_audio(url: str) -> str:
             "preferredquality": "192",
         }
     ],
-
     "cookiefile": "www.youtube.com_cookies.txt",
     "quiet": True,
 }
