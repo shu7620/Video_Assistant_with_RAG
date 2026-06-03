@@ -1,58 +1,58 @@
-import yt_dlp
+# import yt_dlp
 from pydub import AudioSegment
 import os
 
-DOWNLOAD_DIR = 'downloads'
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+# DOWNLOAD_DIR = 'downloads'
+# os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 # Update ONLY this function inside utils/audio_processor.py
 
-def download_youtube_audio(url: str) -> str:
-    """Downloads audio from a YouTube video and saves it as a .wav file."""
-    output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+# def download_youtube_audio(url: str) -> str:
+#     """Downloads audio from a YouTube video and saves it as a .wav file."""
+#     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
     
-    # Extract path from environment variable, falling back gracefully if missing
-    # ffmpeg_env_path = os.getenv("FFMPEG_BINARY_PATH")
-    # if not ffmpeg_env_path:
-    #     ffmpeg_env_path = r"C:\Users\shubh\Downloads\ffmpeg-2026-05-25-git-34dfa8bf2b-full_build\bin"
+#     # Extract path from environment variable, falling back gracefully if missing
+#     # ffmpeg_env_path = os.getenv("FFMPEG_BINARY_PATH")
+#     # if not ffmpeg_env_path:
+#     #     ffmpeg_env_path = r"C:\Users\shubh\Downloads\ffmpeg-2026-05-25-git-34dfa8bf2b-full_build\bin"
 
-    # ydl_opts = {
-    #     "format": "bestaudio/best",
-    #     "outtmpl": output_path,
-    #     "ffmpeg_location": ffmpeg_env_path,  # 👈 Dynamic path assignment
-    #     "postprocessors": [
-    #         {
-    #             "key": "FFmpegExtractAudio",
-    #             "preferredcodec": "wav",
-    #             "preferredquality": "192",
-    #         }
-    #     ],
-    #     'cookiefile': 'www.youtube.com_cookies.txt',
-    #     "quiet": True,
-    # }
+#     # ydl_opts = {
+#     #     "format": "bestaudio/best",
+#     #     "outtmpl": output_path,
+#     #     "ffmpeg_location": ffmpeg_env_path,  # 👈 Dynamic path assignment
+#     #     "postprocessors": [
+#     #         {
+#     #             "key": "FFmpegExtractAudio",
+#     #             "preferredcodec": "wav",
+#     #             "preferredquality": "192",
+#     #         }
+#     #     ],
+#     #     'cookiefile': 'www.youtube.com_cookies.txt',
+#     #     "quiet": True,
+#     # }
 
-    ydl_opts = {
-    "format": "bestaudio/best",
-    "outtmpl": output_path,
-    "postprocessors": [
-        {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "wav",
-            "preferredquality": "192",
-        }
-    ],
-    "cookiefile": "www.youtube.com_cookies.txt",
-    "quiet": True,
-}
+#     ydl_opts = {
+#     "format": "bestaudio/best",
+#     "outtmpl": output_path,
+#     "postprocessors": [
+#         {
+#             "key": "FFmpegExtractAudio",
+#             "preferredcodec": "wav",
+#             "preferredquality": "192",
+#         }
+#     ],
+#     "cookiefile": "www.youtube.com_cookies.txt",
+#     "quiet": True,
+# }
     
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        # filename = ydl.prepare_filename(info).replace('.webm', '.wav').replace('.m4a', '.wav')
-        original_file = ydl.prepare_filename(info)
-        filename = os.path.splitext(original_file)[0] + ".wav"
+#     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+#         info = ydl.extract_info(url, download=True)
+#         # filename = ydl.prepare_filename(info).replace('.webm', '.wav').replace('.m4a', '.wav')
+#         original_file = ydl.prepare_filename(info)
+#         filename = os.path.splitext(original_file)[0] + ".wav"
     
-    return filename
+#     return filename
 
 
 def convert_to_wav(input_path: str) -> str:
@@ -117,16 +117,21 @@ def chunk_audio(wav_path: str, chunk_minutes: int = 10, overlap_minutes: float =
 
 
 def process_input(source: str) -> list:
-    """Main pipeline function to process a remote YouTube source link."""
-    if source.startswith("http://") or source.startswith("https://"):
-        wav_path = download_youtube_audio(source)
-    else:
-        wav_path = convert_to_wav(source)
+    """Main pipeline function to process local files only."""
 
-   
-    # Explicitly using 10-minute chunks with 0.5-minute overlaps
-    chunks = chunk_audio(wav_path, chunk_minutes=10, overlap_minutes=0.5)
-   
+    if source.startswith(("http://", "https://")):
+        raise ValueError(
+            "YouTube URLs are no longer supported. Please upload a local audio/video file."
+        )
+
+    wav_path = convert_to_wav(source)
+
+    chunks = chunk_audio(
+        wav_path,
+        chunk_minutes=10,
+        overlap_minutes=0.5
+    )
+
     return chunks
 
 

@@ -2,6 +2,8 @@ import os
 import uuid
 import logging
 from typing import Dict, Any, List
+
+from annotated_types import doc
 from fastapi import FastAPI, BackgroundTasks, HTTPException, status, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
@@ -11,15 +13,18 @@ import shutil
 from langchain_mistralai import ChatMistralAI
 
 # Core RAG/Extraction Imports
-from app.utils.audio_processor import process_input, process_local_input
+from app.utils.audio_processor import process_local_input
 from app.core.transcriber import transcribe_all
 from app.core.summarize import rate_limit_safe_llm
 from app.core.vector_store import build_vector_store
 from app.core.rag_engine import load_rag_chain, ask_question
 from app.core.config import settings, db, Shared_llm
 
+
+
 # MongoDB Auth Collections & Helpers
 from app.core.auth import get_current_user, hash_password, verify_password, create_access_token, users_col, analyses_col, chats_col
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,9 +48,9 @@ class AuthRequest(BaseModel):
     email: EmailStr
     password: str
 
-class VideoRequest(BaseModel):
-    url: str
-    language: str
+# class VideoRequest(BaseModel):
+#     url: str
+#     language: str
 
 class ChatRequest(BaseModel):
     task_id: str
@@ -65,7 +70,8 @@ def startup_clean_cached_files():
     Sweeps your temporary directories cleanly upon application startup.
     This guarantees that orphaned file remnants don't slowly exhaust your server disk.
     """
-    cache_dirs = ["downloads", "temp_uploads"]
+    # cache_dirs = ["downloads", "temp_uploads"]
+    cache_dirs = ["temp_uploads"]
     logger.info("🧹 Initializing startup disk storage housecleaning sweeps...")
     
     for folder in cache_dirs:
@@ -123,56 +129,58 @@ def login(payload: AuthRequest):
     return {"access_token": access_token, "token_type": "bearer"}
 
 # --- BACKGROUND WORKERS (NATIVE MONGODB STATUS TRACKING) ---
-def async_video_processing_worker(task_id: str, user_id: str, source_url: str, language: str):
-    chunks_created = []
-    try:
-        chunks_created = process_input(source_url)
-        timestamped_segments = transcribe_all(chunks_created, language=language, chunk_minutes=10)
+# def async_video_processing_worker(task_id: str, user_id: str, source_url: str, language: str):
+#     chunks_created = []
+#     try:
+#         chunks_created = process_input(source_url)
+#         timestamped_segments = transcribe_all(chunks_created, language=language, chunk_minutes=10)
         
-        if not timestamped_segments:
-            raise ValueError("No transcript segments generated.")
+#         if not timestamped_segments:
+#             raise ValueError("No transcript segments generated.")
 
-        master_transcript_str = "\n".join([f"[{seg['start']}] {seg['text']}" for seg in timestamped_segments])
-        build_vector_store(timestamped_segments, task_id=task_id)
+#         master_transcript_str = "\n".join([f"[{seg['start']}] {seg['text']}" for seg in timestamped_segments])
+#         build_vector_store(timestamped_segments, task_id=task_id)
 
-        logger.info(f"🤖 Running Forced Single-Pass Unified Extraction Profile for Task: {task_id}")
-        analysis_result = execute_safe_single_pass(master_transcript_str)
+#         logger.info(f"🤖 Running Forced Single-Pass Unified Extraction Profile for Task: {task_id}")
+#         analysis_result = execute_safe_single_pass(master_transcript_str)
             
-        title = analysis_result.title.strip()
-        summary = analysis_result.summary.strip()
-        action_items = analysis_result.action_items
-        key_decisions = analysis_result.key_decisions
-        open_questions = analysis_result.open_questions
+#         title = analysis_result.title.strip()
+#         summary = analysis_result.summary.strip()
+#         action_items = analysis_result.action_items
+#         key_decisions = analysis_result.key_decisions
+#         open_questions = analysis_result.open_questions
 
-        # Convert the Python lists cleanly into Markdown lists with type/existence checks
-        action_items_str = "\n".join([f"- {str(item).strip()}" for item in action_items if str(item).strip()])
-        key_decisions_str = "\n".join([f"- {str(item).strip()}" for item in key_decisions if str(item).strip()])
-        open_questions_str = "\n".join([f"- {str(item).strip()}" for item in open_questions if str(item).strip()])
+#         # Convert the Python lists cleanly into Markdown lists with type/existence checks
+#         action_items_str = "\n".join([f"- {str(item).strip()}" for item in action_items if str(item).strip()])
+#         key_decisions_str = "\n".join([f"- {str(item).strip()}" for item in key_decisions if str(item).strip()])
+#         open_questions_str = "\n".join([f"- {str(item).strip()}" for item in open_questions if str(item).strip()])
 
-        analyses_col.insert_one({
-            "_id": task_id,
-            "user_id": user_id,
-            "video_url": source_url,
-            "title": title,
-            "summary": summary,
-            "action_items": action_items_str.strip(),
-            "key_decisions": key_decisions_str.strip(),
-            "open_questions": open_questions_str.strip(),
-            "created_at": datetime.utcnow()
-        })
+#         analyses_col.insert_one({
+#             "_id": task_id,
+#             "user_id": user_id,
+#             "video_url": source_url,
+#             "title": title,
+#             "summary": summary,
+#             "action_items": action_items_str.strip(),
+#             "key_decisions": key_decisions_str.strip(),
+#             "open_questions": open_questions_str.strip(),
+#             "created_at": datetime.utcnow()
+#         })
         
-        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "completed"}})
-        logger.info(f"✅ Remote video ingestion pipeline completed successfully for task: {task_id}")
+#         tasks_col.update_one({"_id": task_id}, {"$set": {"status": "completed"}})
+#         logger.info(f"✅ Remote video ingestion pipeline completed successfully for task: {task_id}")
         
-    except Exception as e:
-        logger.error(f"Unified Ingestion Task failure -> {str(e)}")
-        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "failed", "error": str(e)}})
-    finally:
-        for chunk_file in chunks_created:
-            if os.path.exists(chunk_file):
-                os.remove(chunk_file)
+#     except Exception as e:
+#         logger.error(f"Unified Ingestion Task failure -> {str(e)}")
+#         tasks_col.update_one({"_id": task_id}, {"$set": {"status": "failed", "error": str(e)}})
+#     finally:
+#         for chunk_file in chunks_created:
+#             if os.path.exists(chunk_file):
+#                 os.remove(chunk_file)
+
 
 def async_local_video_worker(task_id: str, user_id: str, temporary_video_path: str, language: str):
+    print("WORKER STARTED:", task_id)
     chunks_created = []
     clean_video_filename = os.path.basename(temporary_video_path)
     try:
@@ -204,7 +212,7 @@ def async_local_video_worker(task_id: str, user_id: str, temporary_video_path: s
         analyses_col.insert_one({
             "_id": task_id,
             "user_id": user_id,
-            "video_url": "Local Uploaded File",
+            "video_url": clean_video_filename,
             "title": title,
             "summary": summary,
             "action_items": action_items_str.strip(),
@@ -227,12 +235,12 @@ def async_local_video_worker(task_id: str, user_id: str, temporary_video_path: s
                 os.remove(chunk_file)
 
 # --- PIPELINE ENDPOINTS ---
-@app.post("/api/process-video", status_code=status.HTTP_202_ACCEPTED)
-async def process_video(payload: VideoRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
-    task_id = str(uuid.uuid4())
-    tasks_col.insert_one({"_id": task_id, "status": "processing", "created_at": datetime.utcnow()})
-    background_tasks.add_task(async_video_processing_worker, task_id, current_user["id"], payload.url, payload.language.lower().strip())
-    return {"task_id": task_id, "status": "processing"}
+# @app.post("/api/process-video", status_code=status.HTTP_202_ACCEPTED)
+# async def process_video(payload: VideoRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+#     task_id = str(uuid.uuid4())
+#     tasks_col.insert_one({"_id": task_id, "status": "processing", "created_at": datetime.utcnow()})
+#     background_tasks.add_task(async_video_processing_worker, task_id, current_user["id"], payload.url, payload.language.lower().strip())
+#     return {"task_id": task_id, "status": "processing"}
 
 @app.get("/api/task-status/{task_id}")
 async def get_task_status(task_id: str):
@@ -302,13 +310,17 @@ async def upload_local_video(
     language: str = "english",
     current_user: dict = Depends(get_current_user)
 ):
-    allowed_extensions = [".mp4", ".mkv", ".avi", ".mp3", ".wav", ".m4a"]
+    allowed_extensions = [".mp4", ".mkv", ".avi", ".mp3", ".wav", ".m4a",".WEBM"]
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in allowed_extensions:
         raise HTTPException(status_code=400, detail="Unsupported file extension format.")
 
     task_id = str(uuid.uuid4())
     tasks_col.insert_one({"_id": task_id, "status": "processing", "created_at": datetime.utcnow()})
+    print("TASK CREATED:", task_id)
+
+    doc = tasks_col.find_one({"_id": task_id})
+    print("TASK IN DB:", doc)
     
     os.makedirs("temp_uploads", exist_ok=True)
     temporary_video_path = f"temp_uploads/{task_id}{file_ext}"

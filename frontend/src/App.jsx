@@ -18,10 +18,10 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // App Dashboard States
-  const [uploadMode, setUploadMode] = useState("url"); // "url" or "file"
+  const [uploadMode, setUploadMode] = useState("file"); // "url" or "file"
   const [selectedFile, setSelectedFile] = useState(null);
   //------------------------------------------------------------------
-  const [url, setUrl] = useState("");
+  // const [url, setUrl] = useState("");
   const [language, setLanguage] = useState("english");
   const [taskId, setTaskId] = useState(null);
   const [status, setStatus] = useState("idle");
@@ -100,17 +100,17 @@ const handleSubmission = async (e) => {
     try {
       let response;
       
-      if (uploadMode === "url") {
-        if (!url) return;
-        response = await fetch(`${API_BASE_URL}/api/process-video`, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({ url, language }),
-        });
-      } else {
+      // if (uploadMode === "url") {
+      //   if (!url) return;
+      //   response = await fetch(`${API_BASE_URL}/api/process-video`, {
+      //     method: "POST",
+      //     headers: { 
+      //       "Content-Type": "application/json",
+      //       "Authorization": `Bearer ${token}`
+      //     },
+      //     body: JSON.stringify({ url, language }),
+      //   });
+      // } else {
         // LOCAL FILE UPLOAD BRANCH
         if (!selectedFile) {
           throw new Error("Please select a valid local video file path first.");
@@ -129,7 +129,7 @@ const handleSubmission = async (e) => {
           },
           body: formData,
         });
-      }
+      //}
 
       if (!response.ok) {
         const errorMsg = await response.json();
@@ -340,7 +340,7 @@ const handleSubmission = async (e) => {
             {isSidebarOpen ? "📂 Close Panel" : "📁 Open Panel"}
           </button>
           <h1 className={`text-md font-black tracking-tight ${isDarkMode ? "text-white" : "text-gray-900"}`}>
-            🎙️ TranscribeX - Your AI Video Assistant
+            🎙️ TranscribeX - Your AI Media Assistant
           </h1>
         </div>
 
@@ -382,17 +382,22 @@ const handleSubmission = async (e) => {
                   Saved Analyses Vault
                 </span>
                 <button 
-                  onClick={() => { setStatus("idle"); setTaskId(null); setUrl(""); }} 
+                  // onClick={() => { setStatus("idle"); setTaskId(null); setUrl(""); }} 
+                  onClick={() => {
+  setStatus("idle");
+  setTaskId(null);
+  setSelectedFile(null);
+}}
                   className="text-[13px] bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-md transition font-bold cursor-pointer"
                 >
-                  + New Link
+                  + New Upload
                 </button>
               </div>
 
               <div className="space-y-1.5 flex-1 overflow-y-auto pr-1">
                 {history.length === 0 ? (
                   <p className={`text-[13px] italic p-3 text-center rounded-xl border ${isDarkMode ? "text-gray-600 border-gray-900" : "text-gray-400 border-gray-100"}`}>
-                    No videos processed yet.
+                    No uploads processed yet.
                   </p>
                 ) : (
                   history.map(item => (
@@ -429,22 +434,22 @@ const handleSubmission = async (e) => {
             }`}>
               <div className="text-center space-y-1.5">
                 <h2 className={`text-2xl font-black tracking-tight ${isDarkMode ? "text-white" : "text-gray-900"}`}>
-                  Video Analysis workspace
+                  Media Analysis Workspace
                 </h2>
                 <p className={`text-xs font-medium max-w-sm mx-auto ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                  Provide a Youtube video url or drag and drop local media recordings directly.
+                  Upload a local video or audio file for AI transcription, summarization, and RAG-based chat.
                 </p>
               </div>
 
               {/* Mode Selection Tab bar row elements */}
               <div className="flex border-b border-gray-800 text-s">
-                <button 
+                {/* <button 
                   type="button"
                   onClick={() => setUploadMode("url")} 
                   className={`flex-1 py-2 font-bold transition cursor-pointer text-center ${uploadMode === "url" ? "border-b-2 border-indigo-500 text-indigo-500" : "text-gray-500"}`}
                 >
                   🌐 Remote Link URL
-                </button>
+                </button> */}
                 <button 
                   type="button"
                   onClick={() => setUploadMode("file")} 
@@ -455,7 +460,7 @@ const handleSubmission = async (e) => {
               </div>
 
               <form onSubmit={handleSubmission} className="space-y-4">
-                {uploadMode === "url" ? (
+                {/* {uploadMode === "url" ? (
                   <div>
                     <label className={`block text-[14px] font-bold uppercase tracking-wider mb-1.5 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>Video URL</label>
                     <input 
@@ -468,8 +473,9 @@ const handleSubmission = async (e) => {
                       }`} 
                       required={uploadMode === "url"}
                     />
-                  </div>
-                ) : (
+                  </div> */}
+                {/* ) :  */}
+                
                   <div>
                     <label className={`block text-[14px] font-bold uppercase tracking-wider mb-1.5 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>Select Local Video or Audio Asset</label>
                     <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all relative ${
@@ -480,7 +486,8 @@ const handleSubmission = async (e) => {
                         accept="video/*,audio/*"
                         onChange={e => setSelectedFile(e.target.files[0])}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                        required={uploadMode === "file"}
+                        // required={uploadMode === "file"}
+                        required
                       />
                       <div className="space-y-1">
                         <span className="text-2xl">📤</span>
@@ -491,7 +498,7 @@ const handleSubmission = async (e) => {
                       </div>
                     </div>
                   </div>
-                )}
+                
 
                 <div>
                   <label className={`block text-[14px] font-bold uppercase tracking-wider mb-1.5 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>Video Language</label>
@@ -517,7 +524,7 @@ const handleSubmission = async (e) => {
                   type="submit" 
                   className="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white text-sm font-semibold py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/20 cursor-pointer"
                 >
-                  Execute Video Processing
+                  Execute Media Processing
                 </button>
               </form>
             </div>
@@ -545,7 +552,7 @@ const handleSubmission = async (e) => {
           {status === "completed" && (
             <div className="space-y-4 h-full flex flex-col animate-fadeIn">
               <div className="border-b pb-3 flex flex-col space-y-1">
-                <span className="text-[12px] font-extrabold uppercase tracking-widest text-indigo-500">Video Content Dashboard</span>
+                <span className="text-[12px] font-extrabold uppercase tracking-widest text-indigo-500">Media Content Dashboard</span>
                 <h2 className={`text-xl font-black tracking-tight leading-tight ${isDarkMode ? "text-white" : "text-gray-900"}`}>
                   🎬 {data.title}
                 </h2>
@@ -592,7 +599,7 @@ const handleSubmission = async (e) => {
                   <div className={`p-3.5 border-b text-xs font-bold uppercase tracking-wider flex justify-between items-center ${
                     isDarkMode ? "bg-gray-950/50 border-gray-800 text-white" : "bg-gray-50 border-gray-200 text-gray-800"
                   }`}>
-                    <span>Chat with your video</span>
+                    <span>Chat with your Media</span>
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   </div>
 
