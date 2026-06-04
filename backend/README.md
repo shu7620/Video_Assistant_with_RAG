@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://transcribex.me">🌐 Live Demo</a> •
+  <a href="https://transcribex-nine.vercel.app/">🌐 Live Demo</a> •
   <a href="https://api.transcribex.me/docs">📚 API Docs</a>
 </p>
 
