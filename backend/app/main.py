@@ -22,7 +22,9 @@ from app.core.config import settings, db, Shared_llm
 
 
 
+
 # MongoDB Auth Collections & Helpers
+#from core.auth import get_current_user, hash_password, verify_password, create_access_token, users_col, analyses_col, chats_col
 from app.core.auth import get_current_user, hash_password, verify_password, create_access_token, users_col, analyses_col, chats_col
 
 
@@ -303,6 +305,35 @@ def get_chat_history(task_id: str, current_user: dict = Depends(get_current_user
     messages = chats_col.find({"analysis_id": task_id}).sort("timestamp", 1)
     return [{"sender": msg["sender"], "text": msg["text"]} for msg in messages]
 
+# @app.post("/api/upload-video", status_code=status.HTTP_202_ACCEPTED)
+# async def upload_local_video(
+#     background_tasks: BackgroundTasks,
+#     file: UploadFile = File(...),
+#     language: str = "english",
+#     current_user: dict = Depends(get_current_user)
+# ):
+#     allowed_extensions = [".mp4", ".mkv", ".avi", ".mp3", ".wav", ".m4a",".webm"]
+#     file_ext = os.path.splitext(file.filename)[1].lower()
+#     if file_ext not in allowed_extensions:
+#         raise HTTPException(status_code=400, detail="Unsupported file extension format.")
+
+#     task_id = str(uuid.uuid4())
+#     tasks_col.insert_one({"_id": task_id, "status": "processing", "created_at": datetime.utcnow()})
+#     print("TASK CREATED:", task_id)
+
+#     doc = tasks_col.find_one({"_id": task_id})
+#     print("TASK IN DB:", doc)
+    
+#     os.makedirs("temp_uploads", exist_ok=True)
+#     temporary_video_path = f"temp_uploads/{task_id}{file_ext}"
+    
+#     with open(temporary_video_path, "wb") as buffer:
+#         shutil.copyfileobj(file.file, buffer)
+        
+#     background_tasks.add_task(async_local_video_worker, task_id, current_user["id"], temporary_video_path, language.lower().strip())
+#     return {"task_id": task_id, "status": "processing"}
+
+
 @app.post("/api/upload-video", status_code=status.HTTP_202_ACCEPTED)
 async def upload_local_video(
     background_tasks: BackgroundTasks,
@@ -310,23 +341,80 @@ async def upload_local_video(
     language: str = "english",
     current_user: dict = Depends(get_current_user)
 ):
-    allowed_extensions = [".mp4", ".mkv", ".avi", ".mp3", ".wav", ".m4a",".WEBM"]
+    ALLOWED_EXTENSIONS = {
+        ".mp4",
+        ".mkv",
+        ".avi",
+        ".mov",
+        ".webm",
+        ".mp3",
+        ".wav",
+        ".m4a"
+    }
+
+    MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
+
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="No file selected."
+        )
+
     file_ext = os.path.splitext(file.filename)[1].lower()
-    if file_ext not in allowed_extensions:
-        raise HTTPException(status_code=400, detail="Unsupported file extension format.")
 
-    task_id = str(uuid.uuid4())
-    tasks_col.insert_one({"_id": task_id, "status": "processing", "created_at": datetime.utcnow()})
-    print("TASK CREATED:", task_id)
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                "Unsupported file format. "
+                "Supported formats: MP4, MKV, AVI, MOV, WEBM, MP3, WAV, M4A."
+            )
+        )
 
-    doc = tasks_col.find_one({"_id": task_id})
-    print("TASK IN DB:", doc)
-    
-    os.makedirs("temp_uploads", exist_ok=True)
-    temporary_video_path = f"temp_uploads/{task_id}{file_ext}"
-    
-    with open(temporary_video_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    background_tasks.add_task(async_local_video_worker, task_id, current_user["id"], temporary_video_path, language.lower().strip())
-    return {"task_id": task_id, "status": "processing"}
+    try:
+        os.makedirs("temp_uploads", exist_ok=True)
+
+        task_id = str(uuid.uuid4())
+
+        tasks_col.insert_one({
+            "_id": task_id,
+            "status": "processing",
+            "created_at": datetime.utcnow()
+        })
+
+        temporary_video_path = f"temp_uploads/{task_id}{file_ext}"
+
+        content = await file.read()
+
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail="File size exceeds the maximum allowed limit of 500MB."
+            )
+
+        with open(temporary_video_path, "wb") as buffer:
+            buffer.write(content)
+
+        background_tasks.add_task(
+            async_local_video_worker,
+            task_id,
+            current_user["id"],
+            temporary_video_path,
+            language.lower().strip()
+        )
+
+        return {
+            "task_id": task_id,
+            "status": "processing"
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.exception("Upload failure")
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process uploaded file: {str(e)}"
+        )

@@ -5,6 +5,8 @@ from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from app.core.config import db, settings
 
+
+
 from dotenv import load_dotenv
 load_dotenv()
 

@@ -6,8 +6,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 from pymongo import MongoClient
-# from app.core.config import db, settings
 from app.core.config import db, settings
+#from core.config import db, settings
 
 
 
