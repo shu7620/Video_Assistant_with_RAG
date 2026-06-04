@@ -17,7 +17,7 @@
 
 Transform uploaded media into searchable knowledge using AI-powered transcription, summarization, semantic search, and conversational RAG.
 
-🌐 **Live Application:** https://transcribex.me  
+🌐 **Live Application:** https://www.transcribex.me/  
 🚀 **Backend API:** https://api.transcribex.me/docs
 
 ---
@@ -444,7 +444,7 @@ backend/
 
 # 📸 Live Demo
 
-🌐 **Frontend:** https://transcribex.me
+🌐 **Frontend:** https://www.transcribex.me/
 
 📚 **API Documentation:** https://api.transcribex.me/docs
 
