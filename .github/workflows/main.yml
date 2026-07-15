@@ -63,7 +63,7 @@ jobs:
           # 5. Spin up the container with your variables intact
           sudo docker run -d \
             --name transcribex-backend-container \
-            -p 5000:5000 \
+            -p 8000:8000 \
             -e MONGO_URI="${{ secrets.MONGO_URI }}" \
             -e HUGGINGFACE_API_TOKEN="${{ secrets.HUGGINGFACE_API_TOKEN }}" \
             -e SARVAM_API_KEY="${{ secrets.SARVAM_API_KEY }}" \
