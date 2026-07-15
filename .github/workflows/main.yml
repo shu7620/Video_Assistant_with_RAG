@@ -40,32 +40,32 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Install Docker on EC2 if it isn't installed yet
+            # 1. Install Docker if it isn't installed yet
             if ! [ -x "$(command -v docker)" ]; then
               sudo apt-get update
               sudo apt-get install -y docker.io
               sudo usermod -aG docker ubuntu
             fi
             
-            # Install AWS CLI on EC2 if it isn't installed yet
+            # 2. Install AWS CLI if it isn't installed yet
             if ! [ -x "$(command -v aws)" ]; then
               sudo apt-get install -y awscli
             fi
 
-            # Configure AWS CLI on EC2 using the environment variables passed temporarily
+            # 3. Setup temporary AWS credentials for authentication
             export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
             export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
             export AWS_DEFAULT_REGION=${{ secrets.AWS_REGION }}
 
-            # Log in to ECR from inside EC2
-            aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            # 4. Log in to ECR (Using sudo here ensures it works even before a reboot)
+            sudo aws ecr get-login-password --region $AWS_DEFAULT_REGION | sudo docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
 
-            # Stop and remove the existing container if it exists
-            docker stop transcribex-backend-container || true
-            docker rm transcribex-backend-container || true
+            # 5. Stop and remove the existing container if it exists
+            sudo docker stop transcribex-backend-container || true
+            sudo docker rm transcribex-backend-container || true
 
-            # Pull the fresh image from ECR
-            docker pull ${{ steps.login-ecr.outputs.registry }}/transcribex-backend:latest
+            # 6. Pull the fresh image from ECR
+            sudo docker pull ${{ steps.login-ecr.outputs.registry }}/transcribex-backend:latest
 
-            # Run the new Docker container (Change 8000:8000 to match your backend port)
-            docker run -d --name transcribex-backend-container -p 8000:8000 ${{ steps.login-ecr.outputs.registry }}/transcribex-backend:latest
+            # 7. Run the new Docker container
+            sudo docker run -d --name transcribex-backend-container -p 5000:5000 ${{ steps.login-ecr.outputs.registry }}/transcribex-backend:latest
