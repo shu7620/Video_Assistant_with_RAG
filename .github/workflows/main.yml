@@ -47,15 +47,20 @@ jobs:
           ECR_REGISTRY: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
           ECR_REPOSITORY: transcribex-backend
         run: |
+          # 1. Stop and remove the old running container container first
           sudo docker stop transcribex-backend-container || true
           sudo docker rm transcribex-backend-container || true
           
-          # Clean old image layers instantly to safeguard Free Tier disk space
+          # 2. RUN PRUNE HERE: Clean old cache layers BEFORE logging into ECR
           sudo docker system prune -a -f || true
           
+          # 3. NOW LOG IN: Fresh auth handshake that won't get deleted
+          aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin $ECR_REGISTRY
+          
+          # 4. Pull down the fresh image from ECR safely
           sudo docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
           
-          # Spin up the container, injecting all required RAG and AI API configuration parameters
+          # 5. Spin up the container with your variables intact
           sudo docker run -d \
             --name transcribex-backend-container \
             -p 5000:5000 \
