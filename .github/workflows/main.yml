@@ -1,71 +1,51 @@
-name: Deploy Backend to AWS ECR and EC2
+name: Deploy Backend via Self-Hosted Runner
 
 on:
   push:
     branches:
-      - main  # Change this to your new branch name if testing before merging
+      - main  # Triggers the pipeline when code is pushed to the main branch
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    # Executes this deployment pipeline directly on your EC2 instance hardware
+    runs-on: self-hosted
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Log in to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        run: |
+          # Uses the EC2 IAM Instance Profile Role to securely log into ECR natively
+          aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
 
-      - name: Build, Tag, and Push Docker Image to ECR
+      - name: Build and Push Docker Image to ECR
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REGISTRY: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
           ECR_REPOSITORY: transcribex-backend
           IMAGE_TAG: latest
         run: |
-          # Build from the backend directory
+          # Build the Docker image using the Dockerfile inside your backend folder
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
+          
+          # Push the fresh container image to your AWS ECR Registry
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            # 1. Install Docker if it isn't installed yet
-            if ! [ -x "$(command -v docker)" ]; then
-              sudo apt-get update
-              sudo apt-get install -y docker.io
-              sudo usermod -aG docker ubuntu
-            fi
-            
-            # 2. Install AWS CLI if it isn't installed yet
-            if ! [ -x "$(command -v aws)" ]; then
-              sudo apt-get install -y awscli
-            fi
-
-            # 3. Setup temporary AWS credentials for authentication
-            export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-            export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            export AWS_DEFAULT_REGION=${{ secrets.AWS_REGION }}
-
-            # 4. Log in to ECR (Using sudo -E preserves the AWS env variables)
-            sudo -E aws ecr get-login-password --region $AWS_DEFAULT_REGION | sudo docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
-
-            # 5. Stop and remove the existing container if it exists
-            sudo docker stop transcribex-backend-container || true
-            sudo docker rm transcribex-backend-container || true
-
-            # 6. Pull the fresh image from ECR
-            sudo docker pull ${{ steps.login-ecr.outputs.registry }}/transcribex-backend:latest
-
-            # 7. Run the new Docker container
-            sudo docker run -d --name transcribex-backend-container -p 5000:5000 ${{ steps.login-ecr.outputs.registry }}/transcribex-backend:latest
+      - name: Deploy Container Locally
+        env:
+          ECR_REGISTRY: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
+          ECR_REPOSITORY: transcribex-backend
+        run: |
+          # Stop and remove the old running instance to free up the port
+          docker stop transcribex-backend-container || true
+          docker rm transcribex-backend-container || true
+          
+          # Force clean dangling images to preserve limited Free Tier disk storage
+          docker image prune -f || true
+          
+          # Pull down the latest build version from your ECR repository
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          # Spin up the updated container application on port 8000
+          docker run -d --name transcribex-backend-container -p 8000:8000 $ECR_REGISTRY/$ECR_REPOSITORY:latest
