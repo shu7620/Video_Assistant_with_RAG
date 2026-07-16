@@ -129,7 +129,10 @@ jobs:
           ECR_REGISTRY: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
           ECR_REPOSITORY: transcribex-backend
         run: |
-          # 1. Create runtime .env environment file dynamically on the EC2 host workspace directory
+          # 1. Navigate to the directory containing docker-compose.yaml
+          cd backend
+
+          # 2. Create runtime .env environment file dynamically inside the backend directory
           echo "MONGO_URI=${{ secrets.MONGO_URI }}" > .env
           echo "HUGGINGFACE_API_TOKEN=${{ secrets.HUGGINGFACE_API_TOKEN }}" >> .env
           echo "SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }}" >> .env
@@ -141,14 +144,14 @@ jobs:
           echo "ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" >> .env
           echo "FFMPEG_BINARY_PATH=${{ secrets.FFMPEG_BINARY_PATH }}" >> .env
 
-          # 2. Pull down the fresh base backend layer build from ECR cleanly
+          # 3. Pull down the fresh base backend layer build from ECR cleanly
           sudo docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
           
-          # 3. FIXED: Added 'compose' -> Bring the entire multi-container service layer down safely
+          # 4. Bring the entire multi-container service layer down safely
           sudo docker compose down --remove-orphans || true
           
-          # 4. Clean out old cached dangling layers to safeguard host disk space
+          # 5. Clean out old cached dangling layers to safeguard host disk space
           sudo docker system prune -f || true
           
-          # 5. FIXED: Added 'compose' -> Boot up all production structures simultaneously!
+          # 6. Boot up all production structures simultaneously!
           sudo docker compose up -d
