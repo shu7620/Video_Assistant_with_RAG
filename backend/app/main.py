@@ -418,3 +418,40 @@ async def upload_local_video(
             status_code=500,
             detail=f"Failed to process uploaded file: {str(e)}"
         )
+        
+        
+# --- SIMULATED MOCK UPLOAD FOR PIPELINE CONCURRENT STRESS TESTING ---
+@app.post("/api/test-load-upload", status_code=status.HTTP_202_ACCEPTED)
+async def test_load_upload(
+    background_tasks: BackgroundTasks,
+    language: str = "english"
+):
+    """
+    Simulates a heavy local video upload workflow by cloning a pre-staged 
+    video file asset directly on the EC2 hard drive instance.
+    """
+    # The absolute destination path of the file we moved to the server
+    source_test_asset = "/home/ubuntu/sample_test.mp4"
+    
+    if not os.path.exists(source_test_asset):
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Testing asset not found on host machine at: {source_test_asset}"
+        )
+
+    task_id = str(uuid.uuid4())
+    tasks_col.insert_one({"_id": task_id, "status": "processing", "created_at": datetime.utcnow()})
+    
+    os.makedirs("temp_uploads", exist_ok=True)
+    # Give it a standard mock extension matching your original source asset
+    temporary_video_path = f"temp_uploads/{task_id}.mp4"
+    
+    # Fast copy the file natively on the disk to simulate an upload landing
+    shutil.copy(source_test_asset, temporary_video_path)
+    
+    # Inject it directly into your actual production background worker loop!
+    # Hardcoding a mock user ID string to bypass JWT evaluation dependencies during load testing
+    mock_user_id = "load_test_user_66"
+    background_tasks.add_task(async_local_video_worker, task_id, mock_user_id, temporary_video_path, language.lower().strip())
+    
+    return {"task_id": task_id, "status": "processing"}
