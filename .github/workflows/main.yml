@@ -144,11 +144,11 @@ jobs:
           # 2. Pull down the fresh base backend layer build from ECR cleanly
           sudo docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
           
-          # 3. Bring the entire multi-container service layer down to clean up old tasks safely
+          # 3. FIXED: Added 'compose' -> Bring the entire multi-container service layer down safely
           sudo docker compose down --remove-orphans || true
           
           # 4. Clean out old cached dangling layers to safeguard host disk space
           sudo docker system prune -f || true
           
-          # 5. Boot up all production structures (Redis, FastAPI Server, Celery Worker) simultaneously!
+          # 5. FIXED: Added 'compose' -> Boot up all production structures simultaneously!
           sudo docker compose up -d
