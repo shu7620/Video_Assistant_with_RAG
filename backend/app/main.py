@@ -17,7 +17,7 @@ from app.core.transcriber import transcribe_all
 from app.core.summarize import rate_limit_safe_llm
 from app.core.vector_store import build_vector_store
 from app.core.rag_engine import load_rag_chain, ask_question
-from app.core.config import settings, db, Shared_llm
+from app.core.config import settings, db, Shared_llm,Groq_llm, OpenRouter_llm
 
 # MongoDB Auth Collections & Helpers
 from app.core.auth import get_current_user, hash_password, verify_password, create_access_token, users_col, analyses_col, chats_col
