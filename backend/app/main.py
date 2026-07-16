@@ -431,7 +431,8 @@ async def test_load_upload(
     video file asset directly on the EC2 hard drive instance.
     """
     # The absolute destination path of the file we moved to the server
-    source_test_asset = "/home/ubuntu/sample_test.mp4"
+    # Change this line inside /api/test-load-upload:
+    source_test_asset = "temp_uploads/sample_test.mp4"
     
     if not os.path.exists(source_test_asset):
         raise HTTPException(
