@@ -12,15 +12,15 @@ from datetime import datetime
 import shutil
 
 # Core RAG/Extraction Imports
-from utils.audio_processor import process_input, process_local_input
-from core.transcriber import transcribe_all
-from core.summarize import rate_limit_safe_llm
-from core.vector_store import build_vector_store
-from core.rag_engine import load_rag_chain, ask_question
-from core.config import settings, db, Shared_llm, Groq_llm, OpenRouter_llm
+from app.utils.audio_processor import process_local_input
+from app.core.transcriber import transcribe_all
+from app.core.summarize import rate_limit_safe_llm
+from app.core.vector_store import build_vector_store
+from app.core.rag_engine import load_rag_chain, ask_question
+from app.core.config import settings, db, Shared_llm
 
 # MongoDB Auth Collections & Helpers
-from core.auth import get_current_user, hash_password, verify_password, create_access_token, users_col, analyses_col, chats_col
+from app.core.auth import get_current_user, hash_password, verify_password, create_access_token, users_col, analyses_col, chats_col
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
