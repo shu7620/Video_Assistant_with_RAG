@@ -1,15 +1,64 @@
+# services:
+#   backend:
+#     build: .
+#     container_name: video-assistant-backend
+#     restart: always
+
+#     env_file:
+#       - .env
+
+#     ports:
+#       - "8000:8000"
+
+#     volumes:
+#       - ./downloads:/app/downloads
+#       - ./temp_uploads:/app/temp_uploads
+
+
+version: '3.8'
+
 services:
+  # 1. Zero-Cost Lightweight Message Broker
+  redis:
+    image: redis:alpine
+    container_name: transcribex-redis-broker
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # 2. API Web Server
   backend:
     build: .
-    container_name: video-assistant-backend
+    container_name: transcribex-backend-container
     restart: always
-
     env_file:
       - .env
-
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app/app
     ports:
       - "8000:8000"
-
     volumes:
       - ./downloads:/app/downloads
       - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      - redis
+
+  # 3. Dedicated Background Processing Core Engine
+  celery_worker:
+    build: .
+    container_name: transcribex-celery-worker
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app/app
+    # Overwrites the base Dockerfile command loop to run Celery task consumers instead of Uvicorn
+    command: celery -A celery_worker.celery_app worker --loglevel=info --concurrency=1
+    volumes:
+      - ./downloads:/app/downloads
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      - redis
+      - backend

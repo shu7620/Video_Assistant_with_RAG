@@ -1,3 +1,82 @@
+# name: Scaled Deploy via ECR Cloud Build
+
+# on:
+#   push:
+#     branches:
+#       - main
+
+# jobs:
+#   # Job 1: Build the image on GitHub's cloud servers
+#   build-and-push:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v4
+
+#       - name: Configure AWS Credentials
+#         uses: aws-actions/configure-aws-credentials@v4
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: ap-southeast-2
+
+#       - name: Log in to Amazon ECR
+#         id: login-ecr
+#         uses: aws-actions/amazon-ecr-login@v2
+
+#       - name: Build and Push Docker Image
+#         env:
+#           ECR_REGISTRY: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
+#           ECR_REPOSITORY: transcribex-backend
+#           IMAGE_TAG: latest
+#         run: |
+#           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
+#           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+#   # Job 2: Pull and run the container securely on your EC2 instance
+#   deploy-to-ec2:
+#     needs: build-and-push
+#     runs-on: self-hosted
+#     steps:
+#       - name: Log in to Amazon ECR Natively
+#         run: |
+#           aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
+
+#       - name: Deploy Container Locally
+#         env:
+#           ECR_REGISTRY: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
+#           ECR_REPOSITORY: transcribex-backend
+#         run: |
+#           # 1. Stop and remove the old running container first
+#           sudo docker stop transcribex-backend-container || true
+#           sudo docker rm transcribex-backend-container || true
+          
+#           # 2. Clean old cache layers BEFORE logging into ECR
+#           sudo docker system prune -a -f || true
+          
+#           # 3. NOW LOG IN WITH SUDO: Saves the token to root configuration so pull can read it
+#           aws ecr get-login-password --region ap-southeast-2 | sudo docker login --username AWS --password-stdin $ECR_REGISTRY
+          
+#           # 4. Pull down the fresh image from ECR safely
+#           sudo docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+#           # 5. Spin up the container with your variables intact
+#           sudo docker run -d \
+#             --name transcribex-backend-container \
+#             -p 8000:8000 \
+#             -e MONGO_URI="${{ secrets.MONGO_URI }}" \
+#             -e HUGGINGFACE_API_TOKEN="${{ secrets.HUGGINGFACE_API_TOKEN }}" \
+#             -e SARVAM_API_KEY="${{ secrets.SARVAM_API_KEY }}" \
+#             -e SARVAM_STT_MODEL="${{ secrets.SARVAM_STT_MODEL }}" \
+#             -e MISTRAL_API_KEY="${{ secrets.MISTRAL_API_KEY }}" \
+#             -e GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
+#             -e OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}" \
+#             -e JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+#             -e ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
+#             -e FFMPEG_BINARY_PATH="${{ secrets.FFMPEG_BINARY_PATH }}" \
+#             $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+
 name: Scaled Deploy via ECR Cloud Build
 
 on:
@@ -33,45 +112,43 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-  # Job 2: Pull and run the container securely on your EC2 instance
+  # Job 2: Deploy and spin up your multi-container ecosystem on EC2 via Docker Compose
   deploy-to-ec2:
     needs: build-and-push
     runs-on: self-hosted
     steps:
+      - name: Checkout Repository Code on Host
+        uses: actions/checkout@v4
+
       - name: Log in to Amazon ECR Natively
         run: |
-          aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
+          aws ecr get-login-password --region ap-southeast-2 | sudo docker login --username AWS --password-stdin 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
 
-      - name: Deploy Container Locally
+      - name: Deploy Container Stack via Docker Compose
         env:
           ECR_REGISTRY: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
           ECR_REPOSITORY: transcribex-backend
         run: |
-          # 1. Stop and remove the old running container first
-          sudo docker stop transcribex-backend-container || true
-          sudo docker rm transcribex-backend-container || true
-          
-          # 2. Clean old cache layers BEFORE logging into ECR
-          sudo docker system prune -a -f || true
-          
-          # 3. NOW LOG IN WITH SUDO: Saves the token to root configuration so pull can read it
-          aws ecr get-login-password --region ap-southeast-2 | sudo docker login --username AWS --password-stdin $ECR_REGISTRY
-          
-          # 4. Pull down the fresh image from ECR safely
+          # 1. Create runtime .env environment file dynamically on the EC2 host workspace directory
+          echo "MONGO_URI=${{ secrets.MONGO_URI }}" > .env
+          echo "HUGGINGFACE_API_TOKEN=${{ secrets.HUGGINGFACE_API_TOKEN }}" >> .env
+          echo "SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }}" >> .env
+          echo "SARVAM_STT_MODEL=${{ secrets.SARVAM_STT_MODEL }}" >> .env
+          echo "MISTRAL_API_KEY=${{ secrets.MISTRAL_API_KEY }}" >> .env
+          echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" >> .env
+          echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
+          echo "JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}" >> .env
+          echo "ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" >> .env
+          echo "FFMPEG_BINARY_PATH=${{ secrets.FFMPEG_BINARY_PATH }}" >> .env
+
+          # 2. Pull down the fresh base backend layer build from ECR cleanly
           sudo docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
           
-          # 5. Spin up the container with your variables intact
-          sudo docker run -d \
-            --name transcribex-backend-container \
-            -p 8000:8000 \
-            -e MONGO_URI="${{ secrets.MONGO_URI }}" \
-            -e HUGGINGFACE_API_TOKEN="${{ secrets.HUGGINGFACE_API_TOKEN }}" \
-            -e SARVAM_API_KEY="${{ secrets.SARVAM_API_KEY }}" \
-            -e SARVAM_STT_MODEL="${{ secrets.SARVAM_STT_MODEL }}" \
-            -e MISTRAL_API_KEY="${{ secrets.MISTRAL_API_KEY }}" \
-            -e GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
-            -e OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}" \
-            -e JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
-            -e ALLOWED_ORIGINS="${{ secrets.ALLOWED_ORIGINS }}" \
-            -e FFMPEG_BINARY_PATH="${{ secrets.FFMPEG_BINARY_PATH }}" \
-            $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          # 3. Bring the entire multi-container service layer down to clean up old tasks safely
+          sudo docker compose down --remove-orphans || true
+          
+          # 4. Clean out old cached dangling layers to safeguard host disk space
+          sudo docker system prune -f || true
+          
+          # 5. Boot up all production structures (Redis, FastAPI Server, Celery Worker) simultaneously!
+          sudo docker compose up -d

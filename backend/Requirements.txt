@@ -46,3 +46,7 @@ pydantic[email]==2.13.4
 fpdf2==2.7.9
 reportlab==4.2.0
 deep-translator==1.11.4
+
+# Task Queue Ecosystem
+celery==5.4.0
+redis==5.0.1
