@@ -15,7 +15,7 @@ langchain-mistralai==0.1.12
 langchain-mongodb==0.1.8
 
 langchain-groq==0.1.5
-langchain-openai==0.3.5
+langchain-openai==0.1.25
 groq==0.37.1
 
 # Database
