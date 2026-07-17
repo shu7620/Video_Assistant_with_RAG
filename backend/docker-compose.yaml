@@ -34,7 +34,7 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - PYTHONPATH=/app/app
+      - PYTHONPATH=/app
     ports:
       - "8000:8000"
     volumes:
@@ -52,8 +52,8 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - PYTHONPATH=/app/app
-    command: celery -A celery_worker.celery_app worker --loglevel=info --concurrency=1
+      - PYTHONPATH=/app
+    command: celery -A app.celery_worker.celery_app worker --loglevel=info --concurrency=1
     volumes:
       - ./downloads:/app/downloads
       - ./temp_uploads:/app/temp_uploads
