@@ -50,3 +50,4 @@ deep-translator==1.11.4
 # Task Queue Ecosystem
 celery==5.4.0
 redis==5.0.1
+boto3==1.34.0

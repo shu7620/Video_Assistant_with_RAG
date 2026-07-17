@@ -1,6 +1,6 @@
 # import yt_dlp
-from pydub import AudioSegment
-import os
+# from pydub import AudioSegment
+# import os
 
 # DOWNLOAD_DIR = 'downloads'
 # os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -55,17 +55,132 @@ import os
 #     return filename
 
 
+#----------------------------------------------------------------------------------------------------------------------------------
+
+# def convert_to_wav(input_path: str) -> str:
+#     """Convert any audio/video file to a highly compressed 16kHz mono WAV file."""
+#     output_path = os.path.splitext(input_path)[0] + '_converted.wav'
+    
+#     # Load the source video or audio container
+#     audio = AudioSegment.from_file(input_path)
+    
+#     # Force single-channel (mono) and low sample rate (16kHz) which Whisper prefers
+#     audio = audio.set_channels(1).set_frame_rate(16000)
+    
+#     # FIX: Explicitly restrict parameters to 16-bit PCM to radically compress file size
+#     audio.export(
+#         output_path, 
+#         format="wav", 
+#         parameters=["-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1"]
+#     )
+    
+#     return output_path
+
+# # Replace chunk_audio, process_input, and process_local_input in utils/audio_processor.py
+
+# def chunk_audio(wav_path: str, chunk_minutes: int = 10, overlap_minutes: float = 0.5) -> list:
+#     """
+#     Splits a WAV file into smaller chunks with a specified sliding overlap duration 
+#     to preserve boundary semantic context for the RAG pipeline.
+#     """
+#     audio = AudioSegment.from_wav(wav_path)
+    
+#     chunk_ms = chunk_minutes * 60 * 1000
+#     overlap_ms = int(overlap_minutes * 60 * 1000)
+#     step_ms = chunk_ms - overlap_ms  # 👈 The magic line: how far forward we jump each time
+    
+#     base_path, _ = os.path.splitext(wav_path)
+#     chunks = []
+    
+#     # If the file is shorter than a single chunk, handle it immediately
+#     if len(audio) <= chunk_ms:
+#         chunk_path = f"{base_path}_chunk_0.wav"
+#         audio.export(chunk_path, format="wav", parameters=["-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1"])
+#         return [chunk_path]
+
+#     start = 0
+#     i = 0
+#     while start < len(audio):
+#         end = start + chunk_ms
+#         chunk = audio[start:end]
+        
+#         chunk_path = f"{base_path}_chunk_{i}.wav"
+#         chunk.export(chunk_path, format="wav", parameters=["-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1"])
+#         chunks.append(chunk_path)
+        
+#         # If the next slice can't capture a meaningful frame past the overlap, we stop
+#         if end >= len(audio):
+#             break
+            
+#         start += step_ms
+#         i += 1
+    
+#     return chunks
+
+
+# def process_input(source: str) -> list:
+#     """Main pipeline function to process local files only."""
+
+#     if source.startswith(("http://", "https://")):
+#         raise ValueError(
+#             "YouTube URLs are no longer supported. Please upload a local audio/video file."
+#         )
+
+#     wav_path = convert_to_wav(source)
+
+#     chunks = chunk_audio(
+#         wav_path,
+#         chunk_minutes=10,
+#         overlap_minutes=0.5
+#     )
+
+#     return chunks
+
+
+# def process_local_input(local_file_path: str) -> list:
+#     """Dedicated processor for handling multi-format local user file uploads."""
+   
+#     standardized_wav = convert_to_wav(local_file_path)
+    
+#     try:
+        
+#         chunks = chunk_audio(standardized_wav, chunk_minutes=10, overlap_minutes=0.5)
+#         return chunks
+#     finally:
+#         if os.path.exists(standardized_wav):
+#             os.remove(standardized_wav)
+
+
+#---------------------------------------------------------------------------------------------------------------
+
+from pydub import AudioSegment
+import os
+from app.core.config import s3_client, settings
+
+def upload_file_to_s3(local_path: str, s3_key: str) -> str:
+    """Uploads a file to the centralized S3 bucket securely."""
+    s3_client.upload_file(
+        Filename=local_path,
+        Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+        Key=s3_key
+    )
+    return s3_key
+
+def generate_s3_presigned_url(s3_key: str, expiration: int = 3600) -> str:
+    """Generates a secure, temporary temporary link for RAG analytics streaming access."""
+    return s3_client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': settings.AWS_STORAGE_BUCKET_NAME, 'Key': s3_key},
+        ExpiresIn=expiration
+    )
+
 def convert_to_wav(input_path: str) -> str:
     """Convert any audio/video file to a highly compressed 16kHz mono WAV file."""
     output_path = os.path.splitext(input_path)[0] + '_converted.wav'
     
-    # Load the source video or audio container
     audio = AudioSegment.from_file(input_path)
-    
-    # Force single-channel (mono) and low sample rate (16kHz) which Whisper prefers
     audio = audio.set_channels(1).set_frame_rate(16000)
     
-    # FIX: Explicitly restrict parameters to 16-bit PCM to radically compress file size
     audio.export(
         output_path, 
         format="wav", 
@@ -74,23 +189,17 @@ def convert_to_wav(input_path: str) -> str:
     
     return output_path
 
-# Replace chunk_audio, process_input, and process_local_input in utils/audio_processor.py
-
 def chunk_audio(wav_path: str, chunk_minutes: int = 10, overlap_minutes: float = 0.5) -> list:
-    """
-    Splits a WAV file into smaller chunks with a specified sliding overlap duration 
-    to preserve boundary semantic context for the RAG pipeline.
-    """
+    """Splits a WAV file into smaller chunks with sliding overlap duration."""
     audio = AudioSegment.from_wav(wav_path)
     
     chunk_ms = chunk_minutes * 60 * 1000
     overlap_ms = int(overlap_minutes * 60 * 1000)
-    step_ms = chunk_ms - overlap_ms  # 👈 The magic line: how far forward we jump each time
+    step_ms = chunk_ms - overlap_ms
     
     base_path, _ = os.path.splitext(wav_path)
     chunks = []
     
-    # If the file is shorter than a single chunk, handle it immediately
     if len(audio) <= chunk_ms:
         chunk_path = f"{base_path}_chunk_0.wav"
         audio.export(chunk_path, format="wav", parameters=["-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1"])
@@ -106,7 +215,6 @@ def chunk_audio(wav_path: str, chunk_minutes: int = 10, overlap_minutes: float =
         chunk.export(chunk_path, format="wav", parameters=["-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1"])
         chunks.append(chunk_path)
         
-        # If the next slice can't capture a meaningful frame past the overlap, we stop
         if end >= len(audio):
             break
             
@@ -115,35 +223,38 @@ def chunk_audio(wav_path: str, chunk_minutes: int = 10, overlap_minutes: float =
     
     return chunks
 
-
 def process_input(source: str) -> list:
     """Main pipeline function to process local files only."""
-
     if source.startswith(("http://", "https://")):
         raise ValueError(
             "YouTube URLs are no longer supported. Please upload a local audio/video file."
         )
 
     wav_path = convert_to_wav(source)
-
-    chunks = chunk_audio(
-        wav_path,
-        chunk_minutes=10,
-        overlap_minutes=0.5
-    )
-
+    chunks = chunk_audio(wav_path, chunk_minutes=10, overlap_minutes=0.5)
     return chunks
 
-
 def process_local_input(local_file_path: str) -> list:
-    """Dedicated processor for handling multi-format local user file uploads."""
-   
+    """Dedicated processor for local files that copies tracking artifacts to cloud storage."""
     standardized_wav = convert_to_wav(local_file_path)
     
     try:
-        
         chunks = chunk_audio(standardized_wav, chunk_minutes=10, overlap_minutes=0.5)
-        return chunks
+        
+        s3_backed_keys = []
+        for local_chunk in chunks:
+            filename = os.path.basename(local_chunk)
+            s3_key = f"chunks/{filename}"
+            
+            # Offload chunk processing target explicitly to AWS S3 Cloud Storage
+            upload_file_to_s3(local_chunk, s3_key)
+            s3_backed_keys.append(s3_key)
+            
+            # Free disk space footprint on the local EC2 server immediately
+            if os.path.exists(local_chunk):
+                os.remove(local_chunk)
+                
+        return s3_backed_keys
     finally:
         if os.path.exists(standardized_wav):
             os.remove(standardized_wav)
