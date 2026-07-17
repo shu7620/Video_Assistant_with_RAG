@@ -141,7 +141,7 @@ jobs:
           echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" >> .env
           echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
           echo "JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}" >> .env
-          echo "ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" >> .env
+          echo 'ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}' >> .env
           echo "FFMPEG_BINARY_PATH=${{ secrets.FFMPEG_BINARY_PATH }}" >> .env
 
           # 3. CRITICAL: Stop the old containers FIRST to release disk space locks

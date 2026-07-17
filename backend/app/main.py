@@ -402,23 +402,21 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Video Assistant Authenticated API")
 
-# 1. Grab raw environment variable string safely
-raw_origins = os.getenv("ALLOWED_ORIGINS", "[]")
+# 1. Fallback base domains list
+origins = ["https://www.transcribex.me", "https://transcribex.me"]
 
-try:
-    # Handle standard JSON or Python list formatting strings like: '["https://www.transcribex.me"]'
-    origins = ast.literal_eval(raw_origins)
-    if not isinstance(origins, list):
-        origins = [str(origins)]
-except (ValueError, SyntaxError):
-    # Fallback splitting by comma if it was written as: https://www.transcribex.me,https://transcribex.me
-    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+# 2. Try to append domains dynamically from environment settings if present
+raw_origins = os.getenv("ALLOWED_ORIGINS")
+if raw_origins:
+    try:
+        parsed_origins = ast.literal_eval(raw_origins)
+        if isinstance(parsed_origins, list):
+            origins = list(set(origins + [str(o) for o in parsed_origins]))
+    except (ValueError, SyntaxError):
+        # Fallback splitting by comma if formatted as plain text split strings
+        extra_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+        origins = list(set(origins + extra_origins))
 
-# Clean fallback safeguards just in case
-if not origins or origins == ["[]"]:
-    origins = ["https://www.transcribex.me", "https://transcribex.me"]
-
-# 2. Bind the middleware cleanly
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
