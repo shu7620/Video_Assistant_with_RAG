@@ -3,7 +3,7 @@ import logging
 from pydub import AudioSegment
 from app.core.config import s3_client, settings
 
-# 🌐 Initialize the logger module for container stream tracking
+# Initialize tracking logger streams
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,6 @@ def convert_to_wav(input_path: str) -> str:
         format="wav", 
         parameters=["-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1"]
     )
-    
     return output_path
 
 def chunk_audio(wav_path: str, chunk_minutes: int = 10, overlap_minutes: float = 0.5) -> list:
@@ -70,45 +69,28 @@ def chunk_audio(wav_path: str, chunk_minutes: int = 10, overlap_minutes: float =
             
         start += step_ms
         i += 1
-    
     return chunks
 
 def process_input(source: str) -> list:
-    """Main pipeline function to process local files only."""
+    """Main pipeline function to process remote video file tracks."""
     if source.startswith(("http://", "https://")):
         raise ValueError(
             "YouTube URLs are no longer supported. Please upload a local audio/video file."
         )
-
     wav_path = convert_to_wav(source)
     chunks = chunk_audio(wav_path, chunk_minutes=10, overlap_minutes=0.5)
     return chunks
 
 def process_local_input(local_file_path: str) -> list:
-    """Dedicated processor for local files that copies tracking artifacts to cloud storage."""
+    """Dedicated processor for local files that sets up temporary chunk segments on disk."""
     standardized_wav = convert_to_wav(local_file_path)
-    
     try:
+        # Generate target local chunk paths and hand them off safely
         chunks = chunk_audio(standardized_wav, chunk_minutes=10, overlap_minutes=0.5)
-        
-        s3_backed_keys = []
-        for local_chunk in chunks:
-            if not os.path.exists(local_chunk):
-                logger.warning(f"⚠️ Local chunk file missing from disk path: {local_chunk}")
-                continue
-                
-            filename = os.path.basename(local_chunk)
-            s3_key = f"chunks/{filename}"
-            
-            logger.info(f"📤 Uploading chunk to S3: {s3_key}...")
-            upload_file_to_s3(local_chunk, s3_key)
-            s3_backed_keys.append(s3_key)
-            
-            if os.path.exists(local_chunk):
-                os.remove(local_chunk)
-                logger.info(f"🗑️ Cleaned up temporary local scratch space for: {filename}")
-                
-        return s3_backed_keys
+        return chunks
+    except Exception as e:
+        logger.error(f"❌ Scratch extraction sequence failure: {str(e)}")
+        raise e
     finally:
         if os.path.exists(standardized_wav):
             os.remove(standardized_wav)

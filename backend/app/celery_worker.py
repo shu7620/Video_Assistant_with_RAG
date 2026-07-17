@@ -10,36 +10,32 @@ import shutil
 
 # Database and Core RAG Imports
 from app.core.config import settings, db, Shared_llm, Groq_llm, OpenRouter_llm
-from app.utils.audio_processor import process_input, process_local_input
+from app.utils.audio_processor import process_input, process_local_input, upload_file_to_s3
 from app.core.transcriber import transcribe_all
 from app.core.vector_store import build_vector_store
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# MongoDB collections mappings
 tasks_col = db[settings.TASKS_COLLECTION]
 analyses_col = db["analyses"]
 
-# Fetch local Redis URL from environment variables, falling back gracefully to standard localhost
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-# Initialize Celery app context targeting Redis as the broker and backend storage
 celery_app = Celery(
     "video_tasks",
     broker=REDIS_URL,
     backend=REDIS_URL
 )
 
-# Optimize Celery worker allocations for a low-resource EC2 instance tier
 celery_app.conf.update(
     task_serializer='json',
     accept_content=['json'],
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
-    worker_prefetch_multiplier=1, # 👈 Don't hoard tasks; process them one-by-one to save memory
-    task_acks_late=True           # 👈 If the container crashes, return the job back to the queue safely!
+    worker_prefetch_multiplier=1,
+    task_acks_late=True
 )
 
 class VideoAnalysisSchema(BaseModel):
@@ -81,7 +77,6 @@ def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
     ]
     
     last_error = None
-    
     for model_node in models_pool:
         model_name = model_node["name"]
         llm_instance = model_node["engine"]
@@ -91,7 +86,6 @@ def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
         for attempt in range(max_retries):
             try:
                 logger.info(f"⚡ Attempting structured extraction via provider: {model_name} (Attempt {attempt + 1})")
-                
                 if is_structured_supported:
                     structured_llm = llm_instance.with_structured_output(VideoAnalysisSchema)
                     result = structured_llm.invoke(prompt)
@@ -113,7 +107,6 @@ def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
                             key_decisions=parsed_data.get("key_decisions", []),
                             open_questions=parsed_data.get("open_questions", [])
                         )
-                
                 raise ValueError("Structured model response processed as empty target payload or parsing failure.")
             except Exception as e:
                 last_error = str(e)
@@ -123,8 +116,6 @@ def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
         
     raise RuntimeError(f"All available backup language generation units failed. Last error: {last_error}")
 
-
-# --- 🚀 ASYNC TASK ENTRYPOINTS FOR REDIS BROKER PIPELINES ---
 
 @celery_app.task(name="app.celery_worker.process_remote_video_task")
 def process_remote_video_task(task_id: str, user_id: str, source_url: str, language: str):
@@ -177,10 +168,11 @@ def process_local_video_task(task_id: str, user_id: str, temporary_video_path: s
     chunks_created = []
     clean_video_filename = os.path.basename(temporary_video_path)
     try:
-        # 1. Generate local chunks temporarily
+        # 1. Gather local temporary chunk layers
         chunks_created = process_local_input(temporary_video_path)
         
-        # 2. Run Whisper transcription WHILE they are safely on disk
+        # 2. Run Whisper transcription safely while segments are physical files
+        logger.info("🎤 Executing Whisper structural audio segmentation parsing loop...")
         timestamped_segments = transcribe_all(chunks_created, language=language, chunk_minutes=10)
         
         if not timestamped_segments:
@@ -188,24 +180,21 @@ def process_local_video_task(task_id: str, user_id: str, temporary_video_path: s
 
         master_transcript_str = "\n".join([f"[{seg['start']}] {seg['text']}" for seg in timestamped_segments])
         
-        # 3. Offload tracking artifacts to AWS S3 and clean disk immediately after use
-        from app.utils.audio_processor import upload_file_to_s3
+        # 3. Offload chunks to AWS S3 storage and free disk spaces immediately
         s3_backed_keys = []
-        
         for local_chunk in chunks_created:
             if os.path.exists(local_chunk):
                 filename = os.path.basename(local_chunk)
                 s3_key = f"chunks/{filename}"
                 
-                logger.info(f"📤 Migrating chunk to cloud storage: {s3_key}...")
+                logger.info(f"📤 Migrating local partition to cloud asset layer: {s3_key}...")
                 upload_file_to_s3(local_chunk, s3_key)
                 s3_backed_keys.append(s3_key)
                 
-                # Free local storage space completely
                 os.remove(local_chunk)
-                logger.info(f"🗑️ Cleaned local volume footprint for: {filename}")
+                logger.info(f"🗑️ Cleaned temporary storage volume block for: {filename}")
 
-        # 4. Continue with RAG Vector Ingestion using the Master Transcript string
+        # 4. Ingest parsed metrics directly to RAG Vector Store DB
         build_vector_store(timestamped_segments, task_id=task_id)
 
         logger.info(f"🤖 Running Forced Single-Pass Unified Extraction Profile for Local Task: {task_id}")
@@ -226,7 +215,7 @@ def process_local_video_task(task_id: str, user_id: str, temporary_video_path: s
             "action_items": action_items_str.strip(),
             "key_decisions": key_decisions_str.strip(),
             "open_questions": open_questions_str.strip(),
-            "s3_keys": s3_backed_keys, # 👈 Store references in MongoDB for potential future playback RAG requirements
+            "s3_keys": s3_backed_keys, 
             "created_at": datetime.utcnow()
         })
         
@@ -239,7 +228,6 @@ def process_local_video_task(task_id: str, user_id: str, temporary_video_path: s
     finally:
         if os.path.exists(temporary_video_path):
             os.remove(temporary_video_path)
-        # Fallback security cleanup sweep
         for chunk_file in chunks_created:
             if os.path.exists(chunk_file):
                 os.remove(chunk_file)
