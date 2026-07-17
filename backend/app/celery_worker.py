@@ -177,13 +177,35 @@ def process_local_video_task(task_id: str, user_id: str, temporary_video_path: s
     chunks_created = []
     clean_video_filename = os.path.basename(temporary_video_path)
     try:
+        # 1. Generate local chunks temporarily
         chunks_created = process_local_input(temporary_video_path)
+        
+        # 2. Run Whisper transcription WHILE they are safely on disk
         timestamped_segments = transcribe_all(chunks_created, language=language, chunk_minutes=10)
         
         if not timestamped_segments:
             raise ValueError("No transcript segments generated from local media track.")
 
         master_transcript_str = "\n".join([f"[{seg['start']}] {seg['text']}" for seg in timestamped_segments])
+        
+        # 3. Offload tracking artifacts to AWS S3 and clean disk immediately after use
+        from app.utils.audio_processor import upload_file_to_s3
+        s3_backed_keys = []
+        
+        for local_chunk in chunks_created:
+            if os.path.exists(local_chunk):
+                filename = os.path.basename(local_chunk)
+                s3_key = f"chunks/{filename}"
+                
+                logger.info(f"📤 Migrating chunk to cloud storage: {s3_key}...")
+                upload_file_to_s3(local_chunk, s3_key)
+                s3_backed_keys.append(s3_key)
+                
+                # Free local storage space completely
+                os.remove(local_chunk)
+                logger.info(f"🗑️ Cleaned local volume footprint for: {filename}")
+
+        # 4. Continue with RAG Vector Ingestion using the Master Transcript string
         build_vector_store(timestamped_segments, task_id=task_id)
 
         logger.info(f"🤖 Running Forced Single-Pass Unified Extraction Profile for Local Task: {task_id}")
@@ -204,6 +226,7 @@ def process_local_video_task(task_id: str, user_id: str, temporary_video_path: s
             "action_items": action_items_str.strip(),
             "key_decisions": key_decisions_str.strip(),
             "open_questions": open_questions_str.strip(),
+            "s3_keys": s3_backed_keys, # 👈 Store references in MongoDB for potential future playback RAG requirements
             "created_at": datetime.utcnow()
         })
         
@@ -216,6 +239,7 @@ def process_local_video_task(task_id: str, user_id: str, temporary_video_path: s
     finally:
         if os.path.exists(temporary_video_path):
             os.remove(temporary_video_path)
+        # Fallback security cleanup sweep
         for chunk_file in chunks_created:
             if os.path.exists(chunk_file):
                 os.remove(chunk_file)
