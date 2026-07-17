@@ -17,7 +17,6 @@
 version: '3.8'
 
 services:
-  # 1. Zero-Cost Lightweight Message Broker
   redis:
     image: redis:alpine
     container_name: transcribex-redis-broker
@@ -25,7 +24,6 @@ services:
     ports:
       - "6379:6379"
 
-  # 2. API Web Server (Pulls directly from ECR)
   backend:
     image: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com/transcribex-backend:latest
     container_name: transcribex-backend-container
@@ -34,16 +32,16 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - PYTHONPATH=/app
+      - PYTHONPATH=/app  # 👈 Keep base root visible
     ports:
       - "8000:8000"
+    working_dir: /app  # 👈 Explicitly force runtime context to root folder level
     volumes:
       - ./downloads:/app/downloads
       - ./temp_uploads:/app/temp_uploads
     depends_on:
       - redis
 
-  # 3. Dedicated Background Processing Core Engine (Reuses ECR image)
   celery_worker:
     image: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com/transcribex-backend:latest
     container_name: transcribex-celery-worker
@@ -52,7 +50,8 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - PYTHONPATH=/app
+      - PYTHONPATH=/app  # 👈 Keep base root visible
+    working_dir: /app  # 👈 Forces Celery execution workspace context to root
     command: celery -A app.celery_worker.celery_app worker --loglevel=info --concurrency=1
     volumes:
       - ./downloads:/app/downloads
