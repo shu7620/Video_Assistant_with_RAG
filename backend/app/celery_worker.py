@@ -17,7 +17,7 @@ from app.core.vector_store import build_vector_store
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Re-read MongoDB collections mappings
+# MongoDB collections mappings
 tasks_col = db[settings.TASKS_COLLECTION]
 analyses_col = db["analyses"]
 
@@ -49,7 +49,6 @@ class VideoAnalysisSchema(BaseModel):
     key_decisions: List[str] = Field(description="A list of core architectures, frameworks chosen, or agreements resolved.")
     open_questions: List[str] = Field(description="A list of unresolved questions, confusing definitions, or follow-ups.")
 
-# Inside app/celery_worker.py
 
 def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
     prompt = f"""
@@ -67,9 +66,7 @@ def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
     {transcript_str}
     """
     
-    # Configure safety constraints directly on your fallback instances
     try:
-        # Prevent OpenRouter from requesting max context windows that trip a 402 error
         if hasattr(OpenRouter_llm, "max_tokens"):
             OpenRouter_llm.max_tokens = 2000
         elif hasattr(OpenRouter_llm, "model_kwargs"):
@@ -79,7 +76,7 @@ def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
 
     models_pool = [
         {"name": "Primary (Mistral AI)", "engine": Shared_llm, "structured": True},
-        {"name": "Fallback 1 (Groq Llama 3.3)", "engine": Groq_llm, "structured": False}, # Use robust manual parsing if fallback structural engine drops out
+        {"name": "Fallback 1 (Groq Llama 3.3)", "engine": Groq_llm, "structured": False}, 
         {"name": "Fallback 2 (OpenRouter Gemini)", "engine": OpenRouter_llm, "structured": True}
     ]
     
@@ -101,13 +98,11 @@ def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
                     if result and getattr(result, "title", None):
                         return result
                 else:
-                    # Robust fallback parsing strategy for Groq/Llama
                     import json
                     import re
                     response = llm_instance.invoke(prompt)
                     raw_text = response.content if hasattr(response, 'content') else str(response)
                     
-                    # Regex extract to isolate structural JSON content cleanly out of markdown blocks
                     json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
                     if json_match:
                         parsed_data = json.loads(json_match.group(0))
@@ -127,3 +122,100 @@ def execute_safe_single_pass(transcript_str: str) -> VideoAnalysisSchema:
                     time.sleep(2)
         
     raise RuntimeError(f"All available backup language generation units failed. Last error: {last_error}")
+
+
+# --- 🚀 ASYNC TASK ENTRYPOINTS FOR REDIS BROKER PIPELINES ---
+
+@celery_app.task(name="app.celery_worker.process_remote_video_task")
+def process_remote_video_task(task_id: str, user_id: str, source_url: str, language: str):
+    chunks_created = []
+    try:
+        chunks_created = process_input(source_url)
+        timestamped_segments = transcribe_all(chunks_created, language=language, chunk_minutes=10)
+        
+        if not timestamped_segments:
+            raise ValueError("No transcript segments generated.")
+
+        master_transcript_str = "\n".join([f"[{seg['start']}] {seg['text']}" for seg in timestamped_segments])
+        build_vector_store(timestamped_segments, task_id=task_id)
+
+        logger.info(f"🤖 Running Forced Single-Pass Unified Extraction Profile for Task: {task_id}")
+        analysis_result = execute_safe_single_pass(master_transcript_str)
+            
+        title = analysis_result.title.strip()
+        summary = analysis_result.summary.strip()
+        action_items_str = "\n".join([f"- {str(item).strip()}" for item in analysis_result.action_items if str(item).strip()])
+        key_decisions_str = "\n".join([f"- {str(item).strip()}" for item in analysis_result.key_decisions if str(item).strip()])
+        open_questions_str = "\n".join([f"- {str(item).strip()}" for item in analysis_result.open_questions if str(item).strip()])
+
+        analyses_col.insert_one({
+            "_id": task_id,
+            "user_id": user_id,
+            "video_url": source_url,
+            "title": title,
+            "summary": summary,
+            "action_items": action_items_str.strip(),
+            "key_decisions": key_decisions_str.strip(),
+            "open_questions": open_questions_str.strip(),
+            "created_at": datetime.utcnow()
+        })
+        
+        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "completed"}})
+        logger.info(f"✅ Remote video ingestion pipeline completed successfully for task: {task_id}")
+        
+    except Exception as e:
+        logger.error(f"Unified Ingestion Task failure -> {str(e)}")
+        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "failed", "error": str(e)}})
+    finally:
+        for chunk_file in chunks_created:
+            if os.path.exists(chunk_file):
+                os.remove(chunk_file)
+
+
+@celery_app.task(name="app.celery_worker.process_local_video_task")
+def process_local_video_task(task_id: str, user_id: str, temporary_video_path: str, language: str):
+    chunks_created = []
+    clean_video_filename = os.path.basename(temporary_video_path)
+    try:
+        chunks_created = process_local_input(temporary_video_path)
+        timestamped_segments = transcribe_all(chunks_created, language=language, chunk_minutes=10)
+        
+        if not timestamped_segments:
+            raise ValueError("No transcript segments generated from local media track.")
+
+        master_transcript_str = "\n".join([f"[{seg['start']}] {seg['text']}" for seg in timestamped_segments])
+        build_vector_store(timestamped_segments, task_id=task_id)
+
+        logger.info(f"🤖 Running Forced Single-Pass Unified Extraction Profile for Local Task: {task_id}")
+        analysis_result = execute_safe_single_pass(master_transcript_str)
+            
+        title = analysis_result.title.strip() if analysis_result.title else clean_video_filename
+        summary = analysis_result.summary.strip() if analysis_result.summary else "Summary generation empty."
+        action_items_str = "\n".join([f"- {str(item).strip()}" for item in analysis_result.action_items if str(item).strip()])
+        key_decisions_str = "\n".join([f"- {str(item).strip()}" for item in analysis_result.key_decisions if str(item).strip()])
+        open_questions_str = "\n".join([f"- {str(item).strip()}" for item in analysis_result.open_questions if str(item).strip()])
+
+        analyses_col.insert_one({
+            "_id": task_id,
+            "user_id": user_id,
+            "video_url": "Local Uploaded File",
+            "title": title,
+            "summary": summary,
+            "action_items": action_items_str.strip(),
+            "key_decisions": key_decisions_str.strip(),
+            "open_questions": open_questions_str.strip(),
+            "created_at": datetime.utcnow()
+        })
+        
+        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "completed"}})
+        logger.info(f"✅ Local video ingestion pipeline completed successfully for task: {task_id}")
+        
+    except Exception as e:
+        logger.error(f"Local video pipeline task failure -> {str(e)}")
+        tasks_col.update_one({"_id": task_id}, {"$set": {"status": "failed", "error": str(e)}})
+    finally:
+        if os.path.exists(temporary_video_path):
+            os.remove(temporary_video_path)
+        for chunk_file in chunks_created:
+            if os.path.exists(chunk_file):
+                os.remove(chunk_file)
