@@ -144,14 +144,15 @@ jobs:
           echo "ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" >> .env
           echo "FFMPEG_BINARY_PATH=${{ secrets.FFMPEG_BINARY_PATH }}" >> .env
 
-          # 3. Pull down the fresh base backend layer build from ECR cleanly
-          sudo docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          
-          # 4. Bring the entire multi-container service layer down safely
+          # 3. CRITICAL: Stop the old containers FIRST to release disk space locks
           sudo docker compose down --remove-orphans || true
           
-          # 5. Clean out old cached dangling layers to safeguard host disk space
-          sudo docker system prune -f || true
+          # 4. CRITICAL: Aggressively purge ALL unused images and build caches BEFORE pulling
+          sudo docker system prune -a --volumes -f || true
+          sudo docker builder prune -a -f || true
+          
+          # 5. Now that space has been reclaimed, pull the fresh image safely
+          sudo docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
           
           # 6. Boot up all production structures simultaneously!
           sudo docker compose up -d
