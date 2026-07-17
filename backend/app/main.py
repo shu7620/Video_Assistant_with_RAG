@@ -387,6 +387,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 import shutil
+import ast
 
 # Core Configurations
 from app.core.config import settings, db
@@ -401,9 +402,26 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Video Assistant Authenticated API")
 
+# 1. Grab raw environment variable string safely
+raw_origins = os.getenv("ALLOWED_ORIGINS", "[]")
+
+try:
+    # Handle standard JSON or Python list formatting strings like: '["https://www.transcribex.me"]'
+    origins = ast.literal_eval(raw_origins)
+    if not isinstance(origins, list):
+        origins = [str(origins)]
+except (ValueError, SyntaxError):
+    # Fallback splitting by comma if it was written as: https://www.transcribex.me,https://transcribex.me
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
+# Clean fallback safeguards just in case
+if not origins or origins == ["[]"]:
+    origins = ["https://www.transcribex.me", "https://transcribex.me"]
+
+# 2. Bind the middleware cleanly
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
