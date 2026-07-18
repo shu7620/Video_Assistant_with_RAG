@@ -276,8 +276,8 @@ app.add_middleware(
 
 tasks_col = db[settings.TASKS_COLLECTION]
 
-# Max Video Upload Boundary Context (80 Megabytes)
-MAX_FILE_SIZE = 80 * 1024 * 1024 
+# Max Video Upload Boundary Context (200 Megabytes)
+MAX_FILE_SIZE = 200 * 1024 * 1024 
 
 # --- INTERNAL RATE LIMITING HELPER ---
 def check_rate_limit(user_id: str, endpoint: str):
