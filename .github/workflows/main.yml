@@ -105,7 +105,7 @@ jobs:
 
       - name: Build and Push Docker Image
         env:
-          ECR_REGISTRY: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
+          ECR_REGISTRY: 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com
           ECR_REPOSITORY: transcribex-backend
           IMAGE_TAG: latest
         run: |
@@ -122,11 +122,11 @@ jobs:
 
       - name: Log in to Amazon ECR Natively
         run: |
-          aws ecr get-login-password --region ap-southeast-2 | sudo docker login --username AWS --password-stdin 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
+          aws ecr get-login-password --region ap-southeast-2 | sudo docker login --username AWS --password-stdin 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com
 
       - name: Deploy Container Stack via Docker Compose
         env:
-          ECR_REGISTRY: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com
+          ECR_REGISTRY: 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com
           ECR_REPOSITORY: transcribex-backend
         run: |
           # 1. Navigate to the directory containing docker-compose.yaml
