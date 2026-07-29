@@ -77,6 +77,87 @@
 #             $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
 
+# name: Scaled Deploy via ECR Cloud Build
+
+# on:
+#   push:
+#     branches:
+#       - main
+
+# jobs:
+#   # Job 1: Build the image on GitHub's cloud servers
+#   build-and-push:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v4
+
+#       - name: Configure AWS Credentials
+#         uses: aws-actions/configure-aws-credentials@v4
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: ap-southeast-2
+
+#       - name: Log in to Amazon ECR
+#         id: login-ecr
+#         uses: aws-actions/amazon-ecr-login@v2
+
+#       - name: Build and Push Docker Image
+#         env:
+#           ECR_REGISTRY: 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com
+#           ECR_REPOSITORY: transcribex-backend
+#           IMAGE_TAG: latest
+#         run: |
+#           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
+#           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+#   # Job 2: Deploy and spin up your multi-container ecosystem on EC2 via Docker Compose
+#   deploy-to-ec2:
+#     needs: build-and-push
+#     runs-on: self-hosted
+#     steps:
+#       - name: Checkout Repository Code on Host
+#         uses: actions/checkout@v4
+
+#       - name: Log in to Amazon ECR Natively
+#         run: |
+#           aws ecr get-login-password --region ap-southeast-2 | sudo docker login --username AWS --password-stdin 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com
+
+#       - name: Deploy Container Stack via Docker Compose
+#         env:
+#           ECR_REGISTRY: 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com
+#           ECR_REPOSITORY: transcribex-backend
+#         run: |
+#           # 1. Navigate to the directory containing docker-compose.yaml
+#           cd backend
+
+#           # 2. Create runtime .env environment file dynamically inside the backend directory
+#           echo "MONGO_URI=${{ secrets.MONGO_URI }}" > .env
+#           echo "HUGGINGFACE_API_TOKEN=${{ secrets.HUGGINGFACE_API_TOKEN }}" >> .env
+#           echo "SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }}" >> .env
+#           echo "SARVAM_STT_MODEL=${{ secrets.SARVAM_STT_MODEL }}" >> .env
+#           echo "MISTRAL_API_KEY=${{ secrets.MISTRAL_API_KEY }}" >> .env
+#           echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" >> .env
+#           echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
+#           echo "JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}" >> .env
+#           echo 'ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}' >> .env
+#           echo "FFMPEG_BINARY_PATH=${{ secrets.FFMPEG_BINARY_PATH }}" >> .env
+
+#           # 3. CRITICAL: Stop the old containers FIRST to release disk space locks
+#           sudo docker compose down --remove-orphans || true
+          
+#           # 4. CRITICAL: Aggressively purge ALL unused images and build caches BEFORE pulling
+#           sudo docker system prune -a --volumes -f || true
+#           sudo docker builder prune -a -f || true
+          
+#           # 5. Now that space has been reclaimed, pull the fresh image safely
+#           sudo docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+#           # 6. Boot up all production structures simultaneously!
+#           sudo docker compose up -d
+
+
 name: Scaled Deploy via ECR Cloud Build
 
 on:
@@ -85,7 +166,7 @@ on:
       - main
 
 jobs:
-  # Job 1: Build the image on GitHub's cloud servers
+  # Job 1: Build and Push image on GitHub-hosted runner
   build-and-push:
     runs-on: ubuntu-latest
     steps:
@@ -112,7 +193,7 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-  # Job 2: Deploy and spin up your multi-container ecosystem on EC2 via Docker Compose
+  # Job 2: Deploy to self-hosted EC2 runner
   deploy-to-ec2:
     needs: build-and-push
     runs-on: self-hosted
@@ -120,19 +201,21 @@ jobs:
       - name: Checkout Repository Code on Host
         uses: actions/checkout@v4
 
-      - name: Log in to Amazon ECR Natively
-        run: |
-          aws ecr get-login-password --region ap-southeast-2 | sudo docker login --username AWS --password-stdin 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com
+      - name: Configure AWS Credentials on Host
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-2
 
       - name: Deploy Container Stack via Docker Compose
         env:
           ECR_REGISTRY: 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com
           ECR_REPOSITORY: transcribex-backend
         run: |
-          # 1. Navigate to the directory containing docker-compose.yaml
           cd backend
 
-          # 2. Create runtime .env environment file dynamically inside the backend directory
+          # 1. Create runtime .env file
           echo "MONGO_URI=${{ secrets.MONGO_URI }}" > .env
           echo "HUGGINGFACE_API_TOKEN=${{ secrets.HUGGINGFACE_API_TOKEN }}" >> .env
           echo "SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }}" >> .env
@@ -144,15 +227,17 @@ jobs:
           echo 'ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}' >> .env
           echo "FFMPEG_BINARY_PATH=${{ secrets.FFMPEG_BINARY_PATH }}" >> .env
 
-          # 3. CRITICAL: Stop the old containers FIRST to release disk space locks
+          # 2. Stop old containers FIRST
           sudo docker compose down --remove-orphans || true
-          
-          # 4. CRITICAL: Aggressively purge ALL unused images and build caches BEFORE pulling
-          sudo docker system prune -a --volumes -f || true
-          sudo docker builder prune -a -f || true
-          
-          # 5. Now that space has been reclaimed, pull the fresh image safely
-          sudo docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          
-          # 6. Boot up all production structures simultaneously!
+
+          # 3. Purge unused images/containers BEFORE logging in (so config.json isn't wiped!)
+          sudo docker system prune -f || true
+
+          # 4. NOW log in natively to Amazon ECR
+          aws ecr get-login-password --region ap-southeast-2 | sudo docker login --username AWS --password-stdin 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com
+
+          # 5. Pull fresh backend image
+          sudo docker compose pull
+
+          # 6. Launch services in detached mode
           sudo docker compose up -d
