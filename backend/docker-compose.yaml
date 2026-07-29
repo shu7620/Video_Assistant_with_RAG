@@ -25,7 +25,7 @@ services:
       - "6379:6379"
 
   backend:
-    image: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com/transcribex-backend:latest
+    image: 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com/transcribex-backend:latest
     container_name: transcribex-backend-container
     restart: always
     env_file:
@@ -43,7 +43,7 @@ services:
       - redis
 
   celery_worker:
-    image: 992646609349.dkr.ecr.ap-southeast-2.amazonaws.com/transcribex-backend:latest
+    image: 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com/transcribex-backend:latest
     container_name: transcribex-celery-worker
     restart: always
     env_file:
