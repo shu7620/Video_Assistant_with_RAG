@@ -102,7 +102,7 @@ class Settings:
     TASKS_COLLECTION: str = "tasks"
 
     # AWS S3 Cloud Storage Configurations
-    AWS_STORAGE_BUCKET_NAME: str = os.getenv("AWS_STORAGE_BUCKET_NAME", "transcribex-media-storage-prod")
+    AWS_STORAGE_BUCKET_NAME: str = os.getenv("AWS_STORAGE_BUCKET_NAME", "transcribex-media-storage-production")
     AWS_DEFAULT_REGION: str = os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2")
 
     # Centralized Redis Configurations
